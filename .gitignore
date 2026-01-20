@@ -207,3 +207,21 @@ marimo/_lsp/
 __marimo__/
 
 .claudeignore
+node_modules/
+
+# Terraform
+*.tfstate
+*.tfstate.*
+.terraform/
+.terraform.lock.hcl
+*.tfvars
+!terraform/environments/*/terraform.tfvars
+crash.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+
+# Lambda packages (keep .gitkeep)
+dist/*
+!dist/.gitkeep
