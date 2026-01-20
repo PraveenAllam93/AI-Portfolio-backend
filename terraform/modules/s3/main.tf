@@ -38,6 +38,8 @@ resource "aws_s3_bucket_lifecycle_configuration" "quarantine" {
     id     = "expire-unprocessed-uploads"
     status = "Enabled"
 
+    filter {}  # Apply to all objects in bucket
+
     expiration {
       days = var.lifecycle_expiration_days
     }
@@ -153,6 +155,8 @@ resource "aws_s3_bucket_lifecycle_configuration" "rejected" {
   rule {
     id     = "expire-rejected-files"
     status = "Enabled"
+
+    filter {}  # Apply to all objects in bucket
 
     expiration {
       days = var.lifecycle_expiration_days

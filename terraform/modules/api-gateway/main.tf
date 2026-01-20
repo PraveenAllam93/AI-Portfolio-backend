@@ -283,6 +283,6 @@ resource "aws_api_gateway_method_settings" "all" {
     throttling_rate_limit  = var.rate_limit
     throttling_burst_limit = var.burst_limit
     metrics_enabled        = true
-    logging_level          = "INFO"
+    logging_level          = "OFF"  # Requires account-level CloudWatch role setup
   }
 }

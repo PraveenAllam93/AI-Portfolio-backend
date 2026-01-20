@@ -146,9 +146,9 @@ variable "api_burst_limit" {
 # =============================================================================
 
 variable "sqs_visibility_timeout" {
-  description = "SQS message visibility timeout (seconds)"
+  description = "SQS message visibility timeout (seconds). Must be >= Lambda timeout."
   type        = number
-  default     = 60
+  default     = 310  # Must be > AI processing Lambda timeout (300s)
 }
 
 variable "sqs_message_retention_days" {
