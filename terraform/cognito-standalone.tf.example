@@ -1,0 +1,298 @@
+# =============================================================================
+# STANDALONE COGNITO DEPLOYMENT
+# =============================================================================
+# Alternative deployment approach: Use this file for standalone Cognito deployment
+# without dependencies on other modules (S3, Lambda, DynamoDB, etc.)
+#
+# Usage:
+#   terraform init
+#   terraform plan
+#   terraform apply
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# PROVIDER
+# -----------------------------------------------------------------------------
+
+provider "aws" {
+  region = "ap-south-1" # Mumbai
+
+  default_tags {
+    tags = {
+      Project     = "ai-portfolio"
+      Environment = "dev"
+      ManagedBy   = "terraform"
+      Component   = "cognito-standalone"
+    }
+  }
+}
+
+# -----------------------------------------------------------------------------
+# DATA SOURCES
+# -----------------------------------------------------------------------------
+
+data "aws_region" "current" {}
+
+# -----------------------------------------------------------------------------
+# VARIABLES (Customizable)
+# -----------------------------------------------------------------------------
+
+variable "environment" {
+  description = "Environment name"
+  type        = string
+  default     = "dev"
+}
+
+variable "project_name" {
+  description = "Project name"
+  type        = string
+  default     = "ai-portfolio"
+}
+
+# Password policy
+variable "password_min_length" {
+  description = "Minimum password length"
+  type        = number
+  default     = 8
+}
+
+variable "password_require_uppercase" {
+  type    = bool
+  default = true
+}
+
+variable "password_require_lowercase" {
+  type    = bool
+  default = true
+}
+
+variable "password_require_numbers" {
+  type    = bool
+  default = true
+}
+
+variable "password_require_symbols" {
+  type    = bool
+  default = false
+}
+
+# -----------------------------------------------------------------------------
+# LOCAL VALUES
+# -----------------------------------------------------------------------------
+
+locals {
+  name_prefix = "${var.project_name}-${var.environment}"
+}
+
+# -----------------------------------------------------------------------------
+# COGNITO USER POOL
+# -----------------------------------------------------------------------------
+
+resource "aws_cognito_user_pool" "main" {
+  name = "${local.name_prefix}-user-pool"
+
+  # Email as username
+  username_attributes      = ["email"]
+  auto_verified_attributes = ["email"]
+
+  # Password policy
+  password_policy {
+    minimum_length                   = var.password_min_length
+    require_uppercase                = var.password_require_uppercase
+    require_lowercase                = var.password_require_lowercase
+    require_numbers                  = var.password_require_numbers
+    require_symbols                  = var.password_require_symbols
+    temporary_password_validity_days = 7
+  }
+
+  # Account recovery via email
+  account_recovery_setting {
+    recovery_mechanism {
+      name     = "verified_email"
+      priority = 1
+    }
+  }
+
+  # Email configuration
+  email_configuration {
+    email_sending_account = "COGNITO_DEFAULT"
+  }
+
+  # User attributes schema
+  schema {
+    name                     = "email"
+    attribute_data_type      = "String"
+    required                 = true
+    mutable                  = true
+    developer_only_attribute = false
+
+    string_attribute_constraints {
+      min_length = 5
+      max_length = 256
+    }
+  }
+
+  schema {
+    name                     = "name"
+    attribute_data_type      = "String"
+    required                 = false
+    mutable                  = true
+    developer_only_attribute = false
+
+    string_attribute_constraints {
+      min_length = 1
+      max_length = 256
+    }
+  }
+
+  # Advanced security (off for dev, enforced for prod)
+  user_pool_add_ons {
+    advanced_security_mode = var.environment == "prod" ? "ENFORCED" : "OFF"
+  }
+
+  # MFA (disabled for dev)
+  mfa_configuration = "OFF"
+
+  # Email verification
+  verification_message_template {
+    default_email_option = "CONFIRM_WITH_CODE"
+    email_subject        = "AI Portfolio - Verify your email"
+    email_message        = "Your verification code is {####}"
+  }
+
+  tags = {
+    Name        = "${local.name_prefix}-user-pool"
+    Environment = var.environment
+  }
+}
+
+# -----------------------------------------------------------------------------
+# USER POOL CLIENT (Frontend App)
+# -----------------------------------------------------------------------------
+
+resource "aws_cognito_user_pool_client" "main" {
+  name         = "${local.name_prefix}-client"
+  user_pool_id = aws_cognito_user_pool.main.id
+
+  # Token validity
+  access_token_validity  = 1  # 1 hour
+  id_token_validity      = 1  # 1 hour
+  refresh_token_validity = 30 # 30 days
+
+  token_validity_units {
+    access_token  = "hours"
+    id_token      = "hours"
+    refresh_token = "days"
+  }
+
+  # Authentication flows
+  explicit_auth_flows = [
+    "ALLOW_USER_PASSWORD_AUTH",
+    "ALLOW_USER_SRP_AUTH",
+    "ALLOW_REFRESH_TOKEN_AUTH"
+  ]
+
+  # OAuth settings
+  supported_identity_providers = ["COGNITO"]
+
+  # No client secret for public clients (SPAs)
+  generate_secret = false
+
+  # Security - prevent user enumeration
+  prevent_user_existence_errors = "ENABLED"
+
+  # Attributes
+  read_attributes  = ["email", "name", "email_verified"]
+  write_attributes = ["email", "name"]
+}
+
+# -----------------------------------------------------------------------------
+# USER POOL DOMAIN (Hosted UI)
+# -----------------------------------------------------------------------------
+
+resource "aws_cognito_user_pool_domain" "main" {
+  domain       = "${local.name_prefix}-auth"
+  user_pool_id = aws_cognito_user_pool.main.id
+}
+
+# -----------------------------------------------------------------------------
+# OUTPUTS
+# -----------------------------------------------------------------------------
+
+output "user_pool_id" {
+  description = "Cognito User Pool ID - Use this in your frontend"
+  value       = aws_cognito_user_pool.main.id
+}
+
+output "user_pool_arn" {
+  description = "Cognito User Pool ARN - Use for API Gateway authorization"
+  value       = aws_cognito_user_pool.main.arn
+}
+
+output "user_pool_client_id" {
+  description = "Cognito Client ID - Use this in your frontend"
+  value       = aws_cognito_user_pool_client.main.id
+}
+
+output "user_pool_endpoint" {
+  description = "Cognito User Pool Endpoint"
+  value       = aws_cognito_user_pool.main.endpoint
+}
+
+output "cognito_domain" {
+  description = "Cognito Hosted UI Domain"
+  value       = aws_cognito_user_pool_domain.main.domain
+}
+
+output "cognito_domain_url" {
+  description = "Full Cognito Hosted UI URL"
+  value       = "https://${aws_cognito_user_pool_domain.main.domain}.auth.${data.aws_region.current.name}.amazoncognito.com"
+}
+
+output "region" {
+  description = "AWS Region"
+  value       = data.aws_region.current.name
+}
+
+# -----------------------------------------------------------------------------
+# FRONTEND CONFIGURATION
+# -----------------------------------------------------------------------------
+
+output "frontend_config" {
+  description = "Copy this configuration to your frontend .env file"
+  value = <<-EOT
+
+    # AWS Cognito Configuration
+    REACT_APP_AWS_REGION=${data.aws_region.current.name}
+    REACT_APP_USER_POOL_ID=${aws_cognito_user_pool.main.id}
+    REACT_APP_USER_POOL_CLIENT_ID=${aws_cognito_user_pool_client.main.id}
+    REACT_APP_COGNITO_DOMAIN=${aws_cognito_user_pool_domain.main.domain}.auth.${data.aws_region.current.name}.amazoncognito.com
+
+  EOT
+}
+
+# -----------------------------------------------------------------------------
+# SUMMARY
+# -----------------------------------------------------------------------------
+
+output "deployment_summary" {
+  description = "Deployment summary"
+  value = {
+    environment        = var.environment
+    region            = data.aws_region.current.name
+    user_pool_name    = aws_cognito_user_pool.main.name
+    client_name       = aws_cognito_user_pool_client.main.name
+    password_policy   = {
+      min_length = var.password_min_length
+      uppercase  = var.password_require_uppercase
+      lowercase  = var.password_require_lowercase
+      numbers    = var.password_require_numbers
+      symbols    = var.password_require_symbols
+    }
+    token_validity = {
+      access_token_hours  = 1
+      id_token_hours      = 1
+      refresh_token_days  = 30
+    }
+  }
+}

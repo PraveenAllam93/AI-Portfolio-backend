@@ -191,15 +191,31 @@ module "api_gateway" {
   # Cognito
   user_pool_arn = module.cognito.user_pool_arn
 
-  # Lambda integrations
-  get_presigned_url_lambda_arn         = module.lambda.get_presigned_url_arn
-  get_presigned_url_lambda_invoke_arn  = module.lambda.get_presigned_url_invoke_arn
-  get_portfolio_lambda_arn             = module.lambda.get_portfolio_arn
-  get_portfolio_lambda_invoke_arn      = module.lambda.get_portfolio_invoke_arn
-  get_status_lambda_arn                = module.lambda.get_status_arn
-  get_status_lambda_invoke_arn         = module.lambda.get_status_invoke_arn
+  # Lambda integrations (COMMENTED OUT - NOT DEPLOYED)
+  # get_presigned_url_lambda_arn         = module.lambda.get_presigned_url_arn
+  # get_presigned_url_lambda_invoke_arn  = module.lambda.get_presigned_url_invoke_arn
+  # get_portfolio_lambda_arn             = module.lambda.get_portfolio_arn
+  # get_portfolio_lambda_invoke_arn      = module.lambda.get_portfolio_invoke_arn
+  # get_status_lambda_arn                = module.lambda.get_status_arn
+  # get_status_lambda_invoke_arn         = module.lambda.get_status_invoke_arn
+
+  # Placeholder values for commented lambdas (required by variables)
+  get_presigned_url_lambda_arn         = "arn:aws:lambda:us-east-1:000000000000:function:placeholder"
+  get_presigned_url_lambda_invoke_arn  = "arn:aws:apigateway:us-east-1:lambda:path/2015-03-31/functions/arn:aws:lambda:us-east-1:000000000000:function:placeholder/invocations"
+  get_portfolio_lambda_arn             = "arn:aws:lambda:us-east-1:000000000000:function:placeholder"
+  get_portfolio_lambda_invoke_arn      = "arn:aws:apigateway:us-east-1:lambda:path/2015-03-31/functions/arn:aws:lambda:us-east-1:000000000000:function:placeholder/invocations"
+  get_status_lambda_arn                = "arn:aws:lambda:us-east-1:000000000000:function:placeholder"
+  get_status_lambda_invoke_arn         = "arn:aws:apigateway:us-east-1:lambda:path/2015-03-31/functions/arn:aws:lambda:us-east-1:000000000000:function:placeholder/invocations"
+
+  # NEW Lambda integration (ACTIVE)
+  get_user_info_lambda_arn             = aws_lambda_function.get_user_info.arn
+  get_user_info_lambda_invoke_arn      = aws_lambda_function.get_user_info.invoke_arn
 
   tags = local.common_tags
+
+  depends_on = [
+    aws_lambda_function.get_user_info
+  ]
 }
 
 # -----------------------------------------------------------------------------

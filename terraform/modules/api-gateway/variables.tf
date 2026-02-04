@@ -57,6 +57,17 @@ variable "get_status_lambda_invoke_arn" {
   type        = string
 }
 
+# NEW Lambda for /user/info
+variable "get_user_info_lambda_arn" {
+  description = "ARN of the get user info Lambda"
+  type        = string
+}
+
+variable "get_user_info_lambda_invoke_arn" {
+  description = "Invoke ARN of the get user info Lambda"
+  type        = string
+}
+
 variable "tags" {
   description = "Tags to apply to resources"
   type        = map(string)
