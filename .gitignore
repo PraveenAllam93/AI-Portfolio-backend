@@ -229,3 +229,5 @@ override.tf.json
 # Lambda packages (keep .gitkeep)
 dist/*
 !dist/.gitkeep
+
+learnings/
