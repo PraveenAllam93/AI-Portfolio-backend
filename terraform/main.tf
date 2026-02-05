@@ -130,6 +130,17 @@ module "cognito" {
 }
 
 # -----------------------------------------------------------------------------
+# SECRETS MANAGER MODULE
+# -----------------------------------------------------------------------------
+
+module "secrets" {
+  source = "./modules/secrets"
+
+  name_prefix = local.name_prefix
+  tags        = local.common_tags
+}
+
+# -----------------------------------------------------------------------------
 # LAMBDA MODULE
 # -----------------------------------------------------------------------------
 
@@ -171,9 +182,11 @@ module "lambda" {
   allowed_mime_types           = var.allowed_mime_types
 
   # Secrets
-  openai_api_key_secret_name = var.openai_api_key_secret_name
+  openai_api_key_secret_name = module.secrets.openai_secret_name
 
   tags = local.common_tags
+
+  depends_on = [module.secrets]
 }
 
 # -----------------------------------------------------------------------------
