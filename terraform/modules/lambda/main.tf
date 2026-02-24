@@ -189,6 +189,23 @@ resource "aws_iam_role_policy" "secrets_access" {
   })
 }
 
+resource "aws_iam_role_policy" "lambda_invoke" {
+  name = "${var.name_prefix}-lambda-invoke-access"
+  role = aws_iam_role.lambda_execution.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid    = "InvokePortfolioGenerator"
+        Effect = "Allow"
+        Action = ["lambda:InvokeFunction"]
+        Resource = "arn:aws:lambda:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:function:${var.name_prefix}-portfolio-generator"
+      }
+    ]
+  })
+}
+
 # -----------------------------------------------------------------------------
 # LAMBDA LAYER (shared dependencies)
 # -----------------------------------------------------------------------------
@@ -365,6 +382,7 @@ resource "aws_lambda_function" "ai_processing" {
       OPENAI_SECRET_NAME        = var.openai_api_key_secret_name
       PORTFOLIO_BUCKET          = var.portfolio_bucket_name
       ENVIRONMENT               = var.environment
+      PORTFOLIO_LAMBDA_NAME     = "${var.name_prefix}-portfolio-generator"
     }
   }
 

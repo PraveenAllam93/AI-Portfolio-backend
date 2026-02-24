@@ -62,10 +62,10 @@ USER_POOL_ID=$(terraform output -raw user_pool_id 2>/dev/null || echo "")
 USER_POOL_CLIENT_ID=$(terraform output -raw user_pool_client_id 2>/dev/null || echo "")
 
 # Get API Gateway
-API_GATEWAY_URL=$(terraform output -raw api_gateway_url 2>/dev/null || echo "")
+API_GATEWAY_URL=$(terraform output -raw api_endpoint 2>/dev/null || echo "")
 
 # Get CloudFront
-CLOUDFRONT_DOMAIN=$(terraform output -raw cloudfront_domain 2>/dev/null || echo "")
+CLOUDFRONT_DOMAIN=$(terraform output -raw cloudfront_domain_name 2>/dev/null || echo "")
 CLOUDFRONT_DISTRIBUTION_ID=$(terraform output -raw cloudfront_distribution_id 2>/dev/null || echo "")
 
 # Get Secrets Manager

@@ -95,19 +95,17 @@ def lambda_handler(event, context):
 
 
 def _extract_pdf_text(content: bytes) -> str:
-    """Extract text from PDF content."""
-    # TODO: Implement using PyPDF2 or pdfplumber
-    # This is a placeholder - will need Lambda layer with dependencies
+    """Extract text from PDF content using PyPDF2."""
     try:
-        # Basic implementation - will be enhanced
-        import io
-        # from PyPDF2 import PdfReader
-        # reader = PdfReader(io.BytesIO(content))
-        # text = ""
-        # for page in reader.pages:
-        #     text += page.extract_text() + "\n"
-        # return text
-        return "PDF text extraction placeholder"
+        from io import BytesIO
+        from PyPDF2 import PdfReader
+        reader = PdfReader(BytesIO(content))
+        text = ""
+        for page in reader.pages:
+            page_text = page.extract_text()
+            if page_text:
+                text += page_text + "\n"
+        return text
     except Exception as e:
         print(f"PDF extraction error: {str(e)}")
         return ""
@@ -128,9 +126,9 @@ def _extract_docx_text(content: bytes) -> str:
             tree = ET.fromstring(xml_content)
 
             # Extract all text nodes
-            namespaces = {'w': 'http://schemas.openxmlformats.org/wordprocessingml/2006/main'}
-            text_elements = tree.findall('.//w:t', namespaces)
-            text = ' '.join([elem.text for elem in text_elements if elem.text])
+            ns = {'w': 'http://schemas.openxmlformats.org/wordprocessingml/2006/main'}
+            text_elements = tree.findall('.//w:t', ns)
+            text = ' '.join([e.text for e in text_elements if e.text])
             return text
     except Exception as e:
         print(f"DOCX extraction error: {str(e)}")
@@ -141,7 +139,10 @@ def _update_status(user_id, upload_id, status, extra_data=None):
     """Update upload status in DynamoDB."""
     table = dynamodb.Table(DYNAMODB_TABLE)
 
-    update_expr = "SET #status = :status, updatedAt = :updatedAt, GSI1PK = :gsi1pk"
+    update_expr = (
+        "SET #status = :status, updatedAt = :updatedAt, GSI1PK = :gsi1pk"
+    )
+    expr_names = {'#status': 'status'}
     expr_values = {
         ':status': status,
         ':updatedAt': datetime.utcnow().isoformat(),
@@ -150,7 +151,8 @@ def _update_status(user_id, upload_id, status, extra_data=None):
 
     if extra_data:
         for key, value in extra_data.items():
-            update_expr += f", {key} = :{key}"
+            update_expr += f", #{key} = :{key}"
+            expr_names[f'#{key}'] = key
             expr_values[f':{key}'] = value
 
     table.update_item(
@@ -159,6 +161,6 @@ def _update_status(user_id, upload_id, status, extra_data=None):
             'SK': f'UPLOAD#{upload_id}'
         },
         UpdateExpression=update_expr,
-        ExpressionAttributeNames={'#status': 'status'},
+        ExpressionAttributeNames=expr_names,
         ExpressionAttributeValues=expr_values
     )

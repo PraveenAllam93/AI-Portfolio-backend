@@ -29,7 +29,7 @@ api_rate_limit  = 10
 api_burst_limit = 20
 
 # SQS Configuration
-sqs_visibility_timeout     = 60
+sqs_visibility_timeout     = 360  # Must be >= lambda timeout (300s); 6x recommended
 sqs_message_retention_days = 4
 dlq_max_receive_count      = 3
 

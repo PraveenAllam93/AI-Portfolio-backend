@@ -26,6 +26,7 @@ var/
 wheels/
 share/python-wheels/
 *.egg-info/
+*.dist-info/
 .installed.cfg
 *.egg
 MANIFEST
@@ -140,6 +141,7 @@ celerybeat.pid
 
 # Environments
 .env
+.env.*
 .envrc
 .venv
 env/
@@ -221,6 +223,8 @@ node_modules/
 *.tfvars
 !terraform/environments/*/terraform.tfvars
 crash.log
+tfplan
+*.tfplan
 override.tf
 override.tf.json
 *_override.tf
@@ -230,4 +234,15 @@ override.tf.json
 dist/*
 !dist/.gitkeep
 
+# Lambda vendor dependencies (pip install --target)
+src/lambdas/*/PyPDF2/
+src/lambdas/*/docx/
+src/lambdas/*/lxml/
+src/lambdas/*/lxml*/
+src/lambdas/*/pypdf2*/
+src/lambdas/*/python_docx*/
+src/lambdas/*/typing_extensions*
+
 learnings/
+docs/
+scripts/

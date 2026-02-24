@@ -17,6 +17,7 @@ DYNAMODB_TABLE = os.environ.get('DYNAMODB_TABLE')
 OPENAI_SECRET_NAME = os.environ.get('OPENAI_SECRET_NAME')
 PORTFOLIO_BUCKET = os.environ.get('PORTFOLIO_BUCKET')
 ENVIRONMENT = os.environ.get('ENVIRONMENT', 'dev')
+PORTFOLIO_LAMBDA_NAME = os.environ.get('PORTFOLIO_LAMBDA_NAME')
 
 # Cache OpenAI API key
 _openai_api_key = None
@@ -78,7 +79,11 @@ def _get_openai_key():
 
     response = secrets_client.get_secret_value(SecretId=OPENAI_SECRET_NAME)
     secret = json.loads(response['SecretString'])
-    _openai_api_key = secret.get('api_key') or secret.get('OPENAI_API_KEY')
+    _openai_api_key = (
+        secret.get('api_key')
+        or secret.get('OPENAI_API_KEY')
+        or secret.get('openai_api_key')
+    )
     return _openai_api_key
 
 
@@ -232,7 +237,12 @@ Return ONLY the JSON object."""
         return {}
 
 
-def _trigger_portfolio_generation(user_id: str, upload_id: str, parsed_data: dict, portfolio_content: dict):
+def _trigger_portfolio_generation(
+    user_id: str,
+    upload_id: str,
+    parsed_data: dict,
+    portfolio_content: dict
+):
     """Trigger the portfolio generator Lambda."""
     # Store data for portfolio generator
     table = dynamodb.Table(DYNAMODB_TABLE)
@@ -247,6 +257,18 @@ def _trigger_portfolio_generation(user_id: str, upload_id: str, parsed_data: dic
         'createdAt': datetime.utcnow().isoformat(),
         'status': 'GENERATING'
     })
+
+    # Invoke portfolio generator Lambda asynchronously
+    if PORTFOLIO_LAMBDA_NAME:
+        lambda_client.invoke(
+            FunctionName=PORTFOLIO_LAMBDA_NAME,
+            InvocationType='Event',  # async
+            Payload=json.dumps({
+                'userId': user_id,
+                'uploadId': upload_id
+            })
+        )
+        print(f"Triggered portfolio generation for {upload_id}")
 
 
 def _update_status(user_id, upload_id, status, extra_data=None):

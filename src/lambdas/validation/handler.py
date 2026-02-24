@@ -145,18 +145,21 @@ def _reject(bucket, key, reason, user_id=None, upload_id=None):
 
 def _update_status(user_id, upload_id, status, extra_data=None):
     """Update upload status in DynamoDB."""
+    from datetime import datetime
     table = dynamodb.Table(DYNAMODB_TABLE)
 
     update_expr = "SET #status = :status, updatedAt = :updatedAt, GSI1PK = :gsi1pk"
+    expr_names = {'#status': 'status'}
     expr_values = {
         ':status': status,
-        ':updatedAt': __import__('datetime').datetime.utcnow().isoformat(),
+        ':updatedAt': datetime.utcnow().isoformat(),
         ':gsi1pk': f'STATUS#{status}'
     }
 
     if extra_data:
         for key, value in extra_data.items():
-            update_expr += f", {key} = :{key}"
+            update_expr += f", #{key} = :{key}"
+            expr_names[f'#{key}'] = key
             expr_values[f':{key}'] = value
 
     table.update_item(
@@ -165,6 +168,6 @@ def _update_status(user_id, upload_id, status, extra_data=None):
             'SK': f'UPLOAD#{upload_id}'
         },
         UpdateExpression=update_expr,
-        ExpressionAttributeNames={'#status': 'status'},
+        ExpressionAttributeNames=expr_names,
         ExpressionAttributeValues=expr_values
     )
