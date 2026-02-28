@@ -66,3 +66,30 @@ output "portfolio_bucket_domain" {
   description = "Regional domain name of the portfolio bucket"
   value       = aws_s3_bucket.portfolio.bucket_regional_domain_name
 }
+
+# Access logs bucket
+output "access_logs_bucket_name" {
+  description = "Name of the CloudFront access logs bucket"
+  value       = aws_s3_bucket.access_logs.bucket
+}
+
+output "access_logs_bucket_arn" {
+  description = "ARN of the CloudFront access logs bucket"
+  value       = aws_s3_bucket.access_logs.arn
+}
+
+output "access_logs_bucket_id" {
+  description = "ID of the CloudFront access logs bucket"
+  value       = aws_s3_bucket.access_logs.id
+}
+
+output "access_logs_bucket_domain" {
+  description = "Domain name for use in CloudFront logging_config (must be bucket_domain_name, not regional)"
+  value       = aws_s3_bucket.access_logs.bucket_domain_name
+  # depends_on ensures CloudFront doesn't attempt to configure logging until
+  # the bucket ACL and public-access-block are fully applied.
+  depends_on = [
+    aws_s3_bucket_acl.access_logs,
+    aws_s3_bucket_public_access_block.access_logs,
+  ]
+}

@@ -1,13 +1,22 @@
 """
 Lambda: AI Processing
-Triggered by SQS queue. Calls OpenAI to parse resume and generate portfolio content.
+Triggered by SQS queue. Calls OpenAI to parse resume and generate portfolio
+content.
+
 IMPORTANT: This Lambda only processes VALIDATED input from the trusted pipeline.
+
+Security notes:
+  - Raw exception messages are logged to CloudWatch only — never stored in
+    DynamoDB or returned to the user. The user-facing field is a generic
+    string; the real error is keyed by correlationId in CloudWatch.
+  - DynamoDB UpdateExpression always uses ExpressionAttributeNames (#alias)
+    to avoid failures on reserved words (e.g. 'name', 'status', 'timestamp').
 """
 
 import json
 import os
 import boto3
-from datetime import datetime
+from datetime import datetime, timezone
 
 dynamodb = boto3.resource('dynamodb')
 secrets_client = boto3.client('secretsmanager')
@@ -19,60 +28,114 @@ PORTFOLIO_BUCKET = os.environ.get('PORTFOLIO_BUCKET')
 ENVIRONMENT = os.environ.get('ENVIRONMENT', 'dev')
 PORTFOLIO_LAMBDA_NAME = os.environ.get('PORTFOLIO_LAMBDA_NAME')
 
-# Cache OpenAI API key
+# Cache OpenAI API key across warm invocations
 _openai_api_key = None
+
+# ---------------------------------------------------------------------------
+# Structured logger — outputs JSON, captured by CloudWatch Logs
+# ---------------------------------------------------------------------------
+
+
+def _log(level: str, message: str, **kwargs) -> None:
+    entry = {
+        "level": level,
+        "function": "ai_processing",
+        "message": message,
+    }
+    entry.update(kwargs)
+    print(json.dumps(entry))
+
+
+def _log_info(message: str, **kwargs) -> None:
+    _log("INFO", message, **kwargs)
+
+
+def _log_error(message: str, **kwargs) -> None:
+    _log("ERROR", message, **kwargs)
 
 
 def lambda_handler(event, context):
     """Process resume with OpenAI and generate portfolio data."""
-    try:
-        for record in event['Records']:
-            message = json.loads(record['body'])
+    correlation_id = context.aws_request_id if context else 'local'
 
+    for record in event['Records']:
+        user_id = None
+        upload_id = None
+        try:
+            message = json.loads(record['body'])
             user_id = message['userId']
             upload_id = message['uploadId']
             resume_text = message['resumeText']
 
-            print(f"AI Processing: {upload_id} for user {user_id}")
+            _log_info(
+                "AI processing started",
+                correlationId=correlation_id,
+                userId=user_id,
+                uploadId=upload_id,
+            )
 
-            # Update status
             _update_status(user_id, upload_id, 'AI_PROCESSING')
 
-            # Get OpenAI API key
             api_key = _get_openai_key()
 
-            # Parse resume with OpenAI
-            parsed_data = _parse_resume_with_openai(resume_text, api_key)
+            parsed_data = _parse_resume_with_openai(
+                resume_text, api_key, correlation_id
+            )
 
             if not parsed_data:
+                _log_error(
+                    "OpenAI returned no parsed data",
+                    correlationId=correlation_id,
+                    userId=user_id,
+                    uploadId=upload_id,
+                )
                 _update_status(user_id, upload_id, 'AI_FAILED', {
-                    'error': 'Failed to parse resume with AI'
+                    'aiError': 'Failed to parse resume with AI',
                 })
                 continue
 
-            # Generate portfolio content
-            portfolio_content = _generate_portfolio_content(parsed_data, api_key)
+            portfolio_content = _generate_portfolio_content(
+                parsed_data, api_key, correlation_id
+            )
 
-            # Store parsed data and portfolio content
             _update_status(user_id, upload_id, 'AI_COMPLETE', {
-                'parsedData': parsed_data,
-                'portfolioContent': portfolio_content
+                'parsedData': json.dumps(parsed_data),
+                'portfolioContent': json.dumps(portfolio_content),
             })
 
-            # Trigger portfolio generation
-            _trigger_portfolio_generation(user_id, upload_id, parsed_data, portfolio_content)
+            _trigger_portfolio_generation(
+                user_id, upload_id, parsed_data, portfolio_content
+            )
 
-            print(f"AI processing complete: {upload_id}")
+            _log_info(
+                "AI processing complete",
+                correlationId=correlation_id,
+                userId=user_id,
+                uploadId=upload_id,
+            )
 
-        return {'statusCode': 200, 'body': 'Processing complete'}
+        except Exception as e:
+            # Log real error internally — DO NOT store str(e) in DynamoDB.
+            # str(e) may contain API keys, stack traces, or internal paths.
+            _log_error(
+                "AI processing error",
+                correlationId=correlation_id,
+                userId=user_id,
+                uploadId=upload_id,
+                error=str(e),
+            )
+            if user_id and upload_id:
+                _update_status(user_id, upload_id, 'AI_FAILED', {
+                    # Generic message only — real error is in CloudWatch logs
+                    'aiError': 'AI processing failed. Please try again.',
+                })
+            raise
 
-    except Exception as e:
-        print(f"AI processing error: {str(e)}")
-        raise
+    return {'statusCode': 200, 'body': 'Processing complete'}
 
 
 def _get_openai_key():
-    """Get OpenAI API key from Secrets Manager (cached)."""
+    """Get OpenAI API key from Secrets Manager (cached per warm container)."""
     global _openai_api_key
     if _openai_api_key:
         return _openai_api_key
@@ -87,11 +150,12 @@ def _get_openai_key():
     return _openai_api_key
 
 
-def _parse_resume_with_openai(resume_text: str, api_key: str) -> dict:
+def _parse_resume_with_openai(
+    resume_text: str, api_key: str, correlation_id: str
+) -> dict:
     """Parse resume text using OpenAI API."""
     try:
         import urllib.request
-        import urllib.error
 
         prompt = f"""Parse the following resume and extract structured information.
 Return a JSON object with the following structure:
@@ -102,7 +166,7 @@ Return a JSON object with the following structure:
     "phone": "phone number",
     "location": "City, Country",
     "summary": "Professional summary (2-3 sentences)",
-    "skills": ["skill1", "skill2", ...],
+    "skills": ["skill1", "skill2"],
     "experience": [
         {{
             "company": "Company Name",
@@ -121,7 +185,7 @@ Return a JSON object with the following structure:
         }}
     ],
     "certifications": ["cert1", "cert2"],
-    "languages": ["language1", "language2"],
+    "languages": ["language1"],
     "links": {{
         "linkedin": "url",
         "github": "url",
@@ -137,28 +201,34 @@ Return ONLY the JSON object, no additional text."""
         request_body = json.dumps({
             "model": "gpt-4o-mini",
             "messages": [
-                {"role": "system", "content": "You are a resume parser. Extract information accurately and return valid JSON only."},
-                {"role": "user", "content": prompt}
+                {
+                    "role": "system",
+                    "content": (
+                        "You are a resume parser. Extract information "
+                        "accurately and return valid JSON only."
+                    ),
+                },
+                {"role": "user", "content": prompt},
             ],
             "temperature": 0.1,
-            "max_tokens": 2000
+            "max_tokens": 2000,
         }).encode('utf-8')
 
-        request = urllib.request.Request(
+        req = urllib.request.Request(
             'https://api.openai.com/v1/chat/completions',
             data=request_body,
             headers={
                 'Authorization': f'Bearer {api_key}',
-                'Content-Type': 'application/json'
-            }
+                'Content-Type': 'application/json',
+            },
         )
 
-        with urllib.request.urlopen(request, timeout=60) as response:
-            result = json.loads(response.read().decode('utf-8'))
+        with urllib.request.urlopen(req, timeout=60) as resp:
+            result = json.loads(resp.read().decode('utf-8'))
 
         content = result['choices'][0]['message']['content']
 
-        # Clean up JSON if wrapped in markdown
+        # Strip markdown code fence if present
         if content.startswith('```'):
             content = content.split('```')[1]
             if content.startswith('json'):
@@ -167,17 +237,23 @@ Return ONLY the JSON object, no additional text."""
         return json.loads(content.strip())
 
     except Exception as e:
-        print(f"OpenAI parsing error: {str(e)}")
+        _log_error(
+            "OpenAI parsing error",
+            correlationId=correlation_id,
+            error=str(e),
+        )
         return None
 
 
-def _generate_portfolio_content(parsed_data: dict, api_key: str) -> dict:
+def _generate_portfolio_content(
+    parsed_data: dict, api_key: str, correlation_id: str
+) -> dict:
     """Generate enhanced portfolio content using OpenAI."""
     try:
         import urllib.request
 
         prompt = f"""Based on this parsed resume data, generate enhanced portfolio content.
-Create engaging, professional descriptions suitable for a portfolio website.
+Create engaging, professional descriptions for a portfolio website.
 
 Input data:
 {json.dumps(parsed_data, indent=2)}
@@ -187,8 +263,7 @@ Return a JSON object with:
     "headline": "A compelling one-line headline",
     "bio": "An engaging 3-4 sentence bio for the about section",
     "skillCategories": {{
-        "category1": ["skill1", "skill2"],
-        "category2": ["skill3", "skill4"]
+        "category1": ["skill1", "skill2"]
     }},
     "experienceHighlights": [
         {{
@@ -204,24 +279,29 @@ Return ONLY the JSON object."""
         request_body = json.dumps({
             "model": "gpt-4o-mini",
             "messages": [
-                {"role": "system", "content": "You are a professional portfolio content writer."},
-                {"role": "user", "content": prompt}
+                {
+                    "role": "system",
+                    "content": (
+                        "You are a professional portfolio content writer."
+                    ),
+                },
+                {"role": "user", "content": prompt},
             ],
             "temperature": 0.7,
-            "max_tokens": 1500
+            "max_tokens": 1500,
         }).encode('utf-8')
 
-        request = urllib.request.Request(
+        req = urllib.request.Request(
             'https://api.openai.com/v1/chat/completions',
             data=request_body,
             headers={
                 'Authorization': f'Bearer {api_key}',
-                'Content-Type': 'application/json'
-            }
+                'Content-Type': 'application/json',
+            },
         )
 
-        with urllib.request.urlopen(request, timeout=60) as response:
-            result = json.loads(response.read().decode('utf-8'))
+        with urllib.request.urlopen(req, timeout=60) as resp:
+            result = json.loads(resp.read().decode('utf-8'))
 
         content = result['choices'][0]['message']['content']
 
@@ -233,7 +313,11 @@ Return ONLY the JSON object."""
         return json.loads(content.strip())
 
     except Exception as e:
-        print(f"Portfolio content generation error: {str(e)}")
+        _log_error(
+            "Portfolio content generation error",
+            correlationId=correlation_id,
+            error=str(e),
+        )
         return {}
 
 
@@ -241,10 +325,9 @@ def _trigger_portfolio_generation(
     user_id: str,
     upload_id: str,
     parsed_data: dict,
-    portfolio_content: dict
-):
-    """Trigger the portfolio generator Lambda."""
-    # Store data for portfolio generator
+    portfolio_content: dict,
+) -> None:
+    """Store portfolio data and invoke portfolio generator Lambda."""
     table = dynamodb.Table(DYNAMODB_TABLE)
     table.put_item(Item={
         'PK': f'USER#{user_id}',
@@ -254,47 +337,65 @@ def _trigger_portfolio_generation(
         'parsedData': parsed_data,
         'portfolioContent': portfolio_content,
         'version': 1,
-        'createdAt': datetime.utcnow().isoformat(),
-        'status': 'GENERATING'
+        'createdAt': datetime.now(timezone.utc).isoformat(),
+        'status': 'GENERATING',
     })
 
-    # Invoke portfolio generator Lambda asynchronously
     if PORTFOLIO_LAMBDA_NAME:
         lambda_client.invoke(
             FunctionName=PORTFOLIO_LAMBDA_NAME,
             InvocationType='Event',  # async
             Payload=json.dumps({
                 'userId': user_id,
-                'uploadId': upload_id
-            })
+                'uploadId': upload_id,
+            }),
         )
-        print(f"Triggered portfolio generation for {upload_id}")
+        _log_info(
+            "Portfolio generation triggered",
+            userId=user_id,
+            uploadId=upload_id,
+        )
 
 
 def _update_status(user_id, upload_id, status, extra_data=None):
-    """Update upload status in DynamoDB."""
+    """
+    Update upload status in DynamoDB.
+
+    ALWAYS uses ExpressionAttributeNames for every attribute name to:
+      1. Prevent failures on DynamoDB reserved words ('name', 'status', etc.)
+      2. Ensure consistent behaviour regardless of extra_data key names.
+    """
     table = dynamodb.Table(DYNAMODB_TABLE)
 
-    update_expr = "SET #status = :status, updatedAt = :updatedAt, GSI1PK = :gsi1pk"
+    update_expr = (
+        "SET #status = :status, #updatedAt = :updatedAt, #gsi1pk = :gsi1pk"
+    )
+    expr_names = {
+        '#status': 'status',
+        '#updatedAt': 'updatedAt',
+        '#gsi1pk': 'GSI1PK',
+    }
     expr_values = {
         ':status': status,
-        ':updatedAt': datetime.utcnow().isoformat(),
-        ':gsi1pk': f'STATUS#{status}'
+        ':updatedAt': datetime.now(timezone.utc).isoformat(),
+        ':gsi1pk': f'STATUS#{status}',
     }
 
     if extra_data:
-        for key, value in extra_data.items():
-            if isinstance(value, dict):
-                value = json.dumps(value)
-            update_expr += f", {key} = :{key}"
-            expr_values[f':{key}'] = value
+        for k, v in extra_data.items():
+            # Wrap every attribute name in an alias — no exceptions
+            alias = f'#extra_{k}'
+            update_expr += f", {alias} = :{k}"
+            expr_names[alias] = k
+            expr_values[f':{k}'] = v
 
     table.update_item(
         Key={
             'PK': f'USER#{user_id}',
-            'SK': f'UPLOAD#{upload_id}'
+            'SK': f'UPLOAD#{upload_id}',
         },
         UpdateExpression=update_expr,
-        ExpressionAttributeNames={'#status': 'status'},
-        ExpressionAttributeValues=expr_values
+        ExpressionAttributeNames=expr_names,
+        ExpressionAttributeValues=expr_values,
     )
+

@@ -244,5 +244,5 @@ src/lambdas/*/python_docx*/
 src/lambdas/*/typing_extensions*
 
 learnings/
-docs/
 scripts/
+docs/

@@ -72,7 +72,18 @@ resource "aws_cognito_user_pool" "main" {
   }
 
   # MFA configuration
-  mfa_configuration = "OFF"  # Enable in production if needed
+  # OPTIONAL lets users choose to enable TOTP MFA; ENFORCED mandates it.
+  # OFF in dev/staging — prod exposes TOTP as an option for users.
+  # The software_token_mfa_configuration block must NOT be present when
+  # mfa_configuration = "OFF" — Cognito rejects that combination.
+  mfa_configuration = var.environment == "prod" ? "OPTIONAL" : "OFF"
+
+  dynamic "software_token_mfa_configuration" {
+    for_each = var.environment == "prod" ? [1] : []
+    content {
+      enabled = true
+    }
+  }
 
   # Verification message
   verification_message_template {
@@ -106,10 +117,14 @@ resource "aws_cognito_user_pool_client" "main" {
   }
 
   # Auth flows
+  # ALLOW_USER_PASSWORD_AUTH is intentionally excluded: it sends the password
+  # to the server in plaintext rather than using SRP (Secure Remote Password),
+  # which means the password is exposed to the auth endpoint.
+  # SRP proves knowledge of the password without transmitting it.
   explicit_auth_flows = [
-    "ALLOW_USER_PASSWORD_AUTH",
+    "ALLOW_ADMIN_USER_PASSWORD_AUTH",
     "ALLOW_USER_SRP_AUTH",
-    "ALLOW_REFRESH_TOKEN_AUTH"
+    "ALLOW_REFRESH_TOKEN_AUTH",
   ]
 
   # OAuth settings (for hosted UI)

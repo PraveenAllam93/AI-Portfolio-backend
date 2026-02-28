@@ -204,5 +204,15 @@ variable "cognito_password_require_symbols" {
 variable "openai_api_key_secret_name" {
   description = "Name of the Secrets Manager secret containing OpenAI API key"
   type        = string
-  default     = "ai-portfolio/openai-api-key"
+  default     = "ai-portfolio/dev/openai-api-key"
+}
+
+# =============================================================================
+# CORS CONFIGURATION
+# =============================================================================
+
+variable "allowed_origin" {
+  description = "CORS allowed origin for API responses. Set to your frontend domain in prod (e.g. https://app.example.com). '*' is fine for dev."
+  type        = string
+  default     = "*"
 }

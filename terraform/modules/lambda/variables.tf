@@ -134,6 +134,24 @@ variable "openai_api_key_secret_name" {
   type        = string
 }
 
+# Access logs bucket (for CloudFront log processing)
+variable "access_logs_bucket_arn" {
+  description = "ARN of the CloudFront access logs S3 bucket"
+  type        = string
+}
+
+variable "access_logs_bucket_name" {
+  description = "Name of the CloudFront access logs S3 bucket"
+  type        = string
+}
+
+# CORS
+variable "allowed_origin" {
+  description = "CORS allowed origin for API responses (e.g. https://app.example.com)"
+  type        = string
+  default     = "*"
+}
+
 variable "tags" {
   description = "Tags to apply to resources"
   type        = map(string)

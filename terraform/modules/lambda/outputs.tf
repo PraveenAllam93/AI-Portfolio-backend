@@ -90,13 +90,62 @@ output "get_status_name" {
   value       = aws_lambda_function.get_status.function_name
 }
 
-# IAM Role
-output "lambda_execution_role_arn" {
-  description = "ARN of the Lambda execution role"
-  value       = aws_iam_role.lambda_execution.arn
+# Process Access Logs Lambda
+output "process_access_logs_arn" {
+  description = "ARN of the process access logs Lambda"
+  value       = aws_lambda_function.process_access_logs.arn
 }
 
-output "lambda_execution_role_name" {
-  description = "Name of the Lambda execution role"
-  value       = aws_iam_role.lambda_execution.name
+output "process_access_logs_name" {
+  description = "Name of the process access logs Lambda"
+  value       = aws_lambda_function.process_access_logs.function_name
 }
+
+# Get Analytics Lambda
+output "get_analytics_arn" {
+  description = "ARN of the get analytics Lambda"
+  value       = aws_lambda_function.get_analytics.arn
+}
+
+output "get_analytics_invoke_arn" {
+  description = "Invoke ARN of the get analytics Lambda"
+  value       = aws_lambda_function.get_analytics.invoke_arn
+}
+
+output "get_analytics_name" {
+  description = "Name of the get analytics Lambda"
+  value       = aws_lambda_function.get_analytics.function_name
+}
+
+# Patch Portfolio Lambda
+output "patch_portfolio_arn" {
+  description = "ARN of the patch portfolio Lambda"
+  value       = aws_lambda_function.patch_portfolio.arn
+}
+
+output "patch_portfolio_invoke_arn" {
+  description = "Invoke ARN of the patch portfolio Lambda"
+  value       = aws_lambda_function.patch_portfolio.invoke_arn
+}
+
+output "patch_portfolio_name" {
+  description = "Name of the patch portfolio Lambda"
+  value       = aws_lambda_function.patch_portfolio.function_name
+}
+
+# AI Enhance Portfolio Lambda
+output "ai_enhance_portfolio_arn" {
+  description = "ARN of the AI enhance portfolio Lambda"
+  value       = aws_lambda_function.ai_enhance_portfolio.arn
+}
+
+output "ai_enhance_portfolio_invoke_arn" {
+  description = "Invoke ARN of the AI enhance portfolio Lambda"
+  value       = aws_lambda_function.ai_enhance_portfolio.invoke_arn
+}
+
+output "ai_enhance_portfolio_name" {
+  description = "Name of the AI enhance portfolio Lambda"
+  value       = aws_lambda_function.ai_enhance_portfolio.function_name
+}
+

@@ -23,6 +23,11 @@ variable "portfolio_bucket_domain" {
   type        = string
 }
 
+variable "access_logs_bucket_domain" {
+  description = "Domain name of the S3 bucket for CloudFront access logs (must be bucket_domain_name, not regional)"
+  type        = string
+}
+
 variable "tags" {
   description = "Tags to apply to resources"
   type        = map(string)

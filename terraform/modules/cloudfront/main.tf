@@ -37,6 +37,15 @@ resource "aws_cloudfront_distribution" "portfolio" {
   default_root_object = "index.html"
   price_class         = "PriceClass_200"  # Excludes South America and Australia
 
+  # Standard access logging: CloudFront writes gzip log files to the dedicated
+  # access-logs S3 bucket every ~5 minutes. The process_access_logs Lambda
+  # reads these files to extract portfolio view events.
+  logging_config {
+    bucket          = var.access_logs_bucket_domain
+    include_cookies = false
+    prefix          = "cloudfront/"
+  }
+
   # Origin: Portfolio S3 bucket
   origin {
     domain_name              = var.portfolio_bucket_domain

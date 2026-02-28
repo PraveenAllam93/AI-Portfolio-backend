@@ -152,6 +152,10 @@ module "lambda" {
   portfolio_bucket_arn    = module.s3.portfolio_bucket_arn
   portfolio_bucket_name   = module.s3.portfolio_bucket_name
 
+  # Access logs bucket (CloudFront view tracking)
+  access_logs_bucket_arn  = module.s3.access_logs_bucket_arn
+  access_logs_bucket_name = module.s3.access_logs_bucket_name
+
   # DynamoDB
   dynamodb_table_arn      = module.dynamodb.table_arn
   dynamodb_table_name     = module.dynamodb.table_name
@@ -173,6 +177,9 @@ module "lambda" {
   # Secrets
   openai_api_key_secret_name = var.openai_api_key_secret_name
 
+  # CORS: lock to your frontend domain in prod (e.g. https://app.example.com)
+  allowed_origin = var.allowed_origin
+
   tags = local.common_tags
 }
 
@@ -191,13 +198,21 @@ module "api_gateway" {
   # Cognito
   user_pool_arn = module.cognito.user_pool_arn
 
-  # Lambda integrations
+  # Lambda integrations — existing
   get_presigned_url_lambda_arn         = module.lambda.get_presigned_url_arn
   get_presigned_url_lambda_invoke_arn  = module.lambda.get_presigned_url_invoke_arn
   get_portfolio_lambda_arn             = module.lambda.get_portfolio_arn
   get_portfolio_lambda_invoke_arn      = module.lambda.get_portfolio_invoke_arn
   get_status_lambda_arn                = module.lambda.get_status_arn
   get_status_lambda_invoke_arn         = module.lambda.get_status_invoke_arn
+
+  # Lambda integrations — new endpoints
+  get_analytics_lambda_arn                   = module.lambda.get_analytics_arn
+  get_analytics_lambda_invoke_arn            = module.lambda.get_analytics_invoke_arn
+  patch_portfolio_lambda_arn                 = module.lambda.patch_portfolio_arn
+  patch_portfolio_lambda_invoke_arn          = module.lambda.patch_portfolio_invoke_arn
+  ai_enhance_portfolio_lambda_arn            = module.lambda.ai_enhance_portfolio_arn
+  ai_enhance_portfolio_lambda_invoke_arn     = module.lambda.ai_enhance_portfolio_invoke_arn
 
   tags = local.common_tags
 }
@@ -214,12 +229,15 @@ module "cloudfront" {
     aws.us_east_1 = aws.us_east_1
   }
 
-  name_prefix              = local.name_prefix
-  environment              = var.environment
-  portfolio_bucket_arn     = module.s3.portfolio_bucket_arn
-  portfolio_bucket_id      = module.s3.portfolio_bucket_id
-  portfolio_bucket_domain  = module.s3.portfolio_bucket_domain
-  tags                     = local.common_tags
+  name_prefix               = local.name_prefix
+  environment               = var.environment
+  portfolio_bucket_arn      = module.s3.portfolio_bucket_arn
+  portfolio_bucket_id       = module.s3.portfolio_bucket_id
+  portfolio_bucket_domain   = module.s3.portfolio_bucket_domain
+  # Access logs bucket — CloudFront writes compressed logs here every ~5 min.
+  # Must use bucket_domain_name (not regional) per CloudFront logging requirement.
+  access_logs_bucket_domain = module.s3.access_logs_bucket_domain
+  tags                      = local.common_tags
 }
 
 # -----------------------------------------------------------------------------
@@ -245,6 +263,21 @@ resource "aws_s3_bucket_notification" "validated_notification" {
   lambda_function {
     lambda_function_arn = module.lambda.resume_ingestion_arn
     events              = ["s3:ObjectCreated:*"]
+  }
+
+  depends_on = [module.lambda]
+}
+
+# Trigger access log processor when CloudFront delivers a new log file.
+# CloudFront writes to the prefix "cloudfront/" so we filter on that.
+resource "aws_s3_bucket_notification" "access_logs_notification" {
+  bucket = module.s3.access_logs_bucket_id
+
+  lambda_function {
+    lambda_function_arn = module.lambda.process_access_logs_arn
+    events              = ["s3:ObjectCreated:*"]
+    filter_prefix       = "cloudfront/"
+    filter_suffix       = ".gz"
   }
 
   depends_on = [module.lambda]
