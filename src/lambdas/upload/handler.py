@@ -30,8 +30,9 @@ DYNAMODB_TABLE = os.environ.get('DYNAMODB_TABLE')
 # Maximum concurrent pending/active uploads per user (abuse protection)
 MAX_ACTIVE_UPLOADS = int(os.environ.get('MAX_ACTIVE_UPLOADS', 5))
 
-# Safe filename: alphanumeric, dash, underscore, dot only. Max 200 chars.
-_SAFE_FILENAME_RE = re.compile(r'^[\w\-. ]{1,200}$')
+# Safe filename: block path separators, null bytes, and Windows reserved chars.
+# Allowlist approach was too strict (rejected spaces in names like "resume 1.pdf").
+_SAFE_FILENAME_RE = re.compile(r'^[^/\\:*?"<>|\x00]{1,200}$')
 
 # ---------------------------------------------------------------------------
 # Structured logger — outputs JSON, captured by CloudWatch Logs

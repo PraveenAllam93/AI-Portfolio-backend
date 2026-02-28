@@ -48,3 +48,5 @@ tags = {
   Owner       = "development-team"
   CostCenter  = "development"
 }
+
+allowed_origin = "https://ai-portfolio-frontend-neon.vercel.app"
