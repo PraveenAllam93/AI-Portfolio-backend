@@ -26,12 +26,20 @@ ALLOWED_MIME_TYPES = os.environ.get(
     'application/pdf,'
     'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
 ).split(',')
-DYNAMODB_TABLE = os.environ.get('DYNAMODB_TABLE')
+MAIN_TABLE = os.environ.get('MAIN_TABLE')
 # Maximum concurrent pending/active uploads per user (abuse protection)
 MAX_ACTIVE_UPLOADS = int(os.environ.get('MAX_ACTIVE_UPLOADS', 5))
 
+# Template IDs — keep in sync with portfolio/handler.py
+# and auth/patch_portfolio.py
+VALID_TEMPLATE_IDS = frozenset({
+    'modern', 'minimal', 'bold', 'creative', 'executive',
+    'nebula', 'aurora', 'luxury',
+})
+DEFAULT_TEMPLATE = 'modern'
+
 # Safe filename: block path separators, null bytes, and Windows reserved chars.
-# Allowlist approach was too strict (rejected spaces in names like "resume 1.pdf").
+# Allowlist was too strict (rejected spaces in names like "resume 1.pdf").
 _SAFE_FILENAME_RE = re.compile(r'^[^/\\:*?"<>|\x00]{1,200}$')
 
 # ---------------------------------------------------------------------------
@@ -73,6 +81,16 @@ def lambda_handler(event, context):
         body = json.loads(event.get('body') or '{}')
         filename = body.get('filename', '')
         content_type = body.get('contentType', '')
+        # templateId is optional — invalid value defaults silently to 'modern'
+        template_id = body.get('templateId', DEFAULT_TEMPLATE)
+        if template_id not in VALID_TEMPLATE_IDS:
+            _log_warning(
+                "Unknown templateId — defaulting to modern",
+                correlationId=correlation_id,
+                userId=user_id,
+                templateId=template_id,
+            )
+            template_id = DEFAULT_TEMPLATE
 
         _log_info(
             "Presigned URL requested",
@@ -160,7 +178,7 @@ def lambda_handler(event, context):
         )
 
         # Record upload intent in DynamoDB
-        table = dynamodb.Table(DYNAMODB_TABLE)
+        table = dynamodb.Table(MAIN_TABLE)
         table.put_item(Item={
             'PK': f'USER#{user_id}',
             'SK': f'UPLOAD#{upload_id}',
@@ -169,6 +187,7 @@ def lambda_handler(event, context):
             'filename': safe_filename,
             'status': 'PENDING_UPLOAD',
             'createdAt': datetime.now(timezone.utc).isoformat(),
+            'templateId': template_id,
             'GSI1PK': 'STATUS#PENDING_UPLOAD',
             'GSI1SK': f'USER#{user_id}#{upload_id}',
         })
@@ -209,7 +228,7 @@ def _active_upload_count(user_id: str) -> int:
         'PENDING_UPLOAD', 'VALIDATING', 'VALIDATED',
         'EXTRACTING_TEXT', 'QUEUED_FOR_AI', 'AI_PROCESSING', 'GENERATING',
     }
-    table = dynamodb.Table(DYNAMODB_TABLE)
+    table = dynamodb.Table(MAIN_TABLE)
     count = 0
     for status in in_flight:
         resp = table.query(

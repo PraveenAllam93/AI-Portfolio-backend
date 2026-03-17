@@ -149,3 +149,19 @@ output "ai_enhance_portfolio_name" {
   value       = aws_lambda_function.ai_enhance_portfolio.function_name
 }
 
+# Get Templates Lambda
+output "get_templates_arn" {
+  description = "ARN of the get templates Lambda"
+  value       = aws_lambda_function.get_templates.arn
+}
+
+output "get_templates_invoke_arn" {
+  description = "Invoke ARN of the get templates Lambda"
+  value       = aws_lambda_function.get_templates.invoke_arn
+}
+
+output "get_templates_name" {
+  description = "Name of the get templates Lambda"
+  value       = aws_lambda_function.get_templates.function_name
+}
+

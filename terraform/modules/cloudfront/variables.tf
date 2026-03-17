@@ -28,6 +28,21 @@ variable "access_logs_bucket_domain" {
   type        = string
 }
 
+variable "templates_bucket_arn" {
+  description = "ARN of the templates S3 bucket"
+  type        = string
+}
+
+variable "templates_bucket_id" {
+  description = "ID of the templates S3 bucket"
+  type        = string
+}
+
+variable "templates_bucket_domain" {
+  description = "Regional domain name of the templates bucket"
+  type        = string
+}
+
 variable "tags" {
   description = "Tags to apply to resources"
   type        = map(string)

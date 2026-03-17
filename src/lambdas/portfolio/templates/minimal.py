@@ -1,290 +1,579 @@
 """
-Template: Minimal
-Ultra-clean monochrome design. White hero with a bold black bottom border.
-No gradients. Refined typography. Subtle underline animations on headings.
+Template: Minimal (v2 Premium Clean)
+
+Upgrades:
+- Wider layout
+- Premium spacing
+- Professional experience layout
+- Strong minimal typography
 """
 
 from .base import CSP, FONTS_URL
 
 
 def html(v: dict) -> str:
+
     links_html = _links(v)
-    email_link = _email_link(v['email'])
-    skills_html = _skills(v['skills'])
-    experience_html = _experience(v['experience'])
-    education_html = _education(v['education'])
+    email_link = _email_link(v["email"])
+    skills_html = _skills(v["skills"])
+    experience_html = _experience(v["experience"])
+    education_html = _education(v["education"])
 
     return f"""<!DOCTYPE html>
 <html lang="en">
+
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta http-equiv="Content-Security-Policy" content="{CSP}">
-    <title>{v['name']} - Portfolio</title>
-    <link rel="stylesheet" href="styles.css">
-    <link href="{FONTS_URL}" rel="stylesheet">
+
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<meta http-equiv="Content-Security-Policy" content="{CSP}">
+
+<title>{v["name"]} Portfolio</title>
+
+<link rel="stylesheet" href="styles.css">
+
+<link href="{FONTS_URL}" rel="stylesheet">
+
 </head>
+
+
 <body>
-    <header class="hero">
-        <div class="container">
-            <h1>{v['name']}</h1>
-            <p class="headline">{v['headline']}</p>
-            <div class="meta">
-                <span class="location">{v['location']}</span>
-                <div class="links">
-                    {links_html}
-                    {email_link}
-                </div>
-            </div>
-        </div>
-    </header>
 
-    <main class="container">
-        <section class="about">
-            <h2><span>About</span></h2>
-            <p>{v['bio']}</p>
-        </section>
 
-        <section class="skills">
-            <h2><span>Skills</span></h2>
-            <div class="skills-container">
-                {skills_html}
-            </div>
-        </section>
 
-        <section class="experience">
-            <h2><span>Experience</span></h2>
-            {experience_html}
-        </section>
+<header class="hero">
 
-        <section class="education">
-            <h2><span>Education</span></h2>
-            {education_html}
-        </section>
-    </main>
+<div class="container">
 
-    <footer>
-        <div class="container">
-            <p>Generated with AI Portfolio Builder</p>
-        </div>
-    </footer>
+<h1>{v["name"]}</h1>
+
+<p class="headline">
+{v["headline"]}
+</p>
+
+
+<div class="meta">
+
+<span>{v["location"]}</span>
+
+<div class="links">
+
+{links_html}
+
+{email_link}
+
+</div>
+
+</div>
+
+</div>
+
+</header>
+
+
+
+<main class="container">
+
+
+<div class="section-grid">
+
+<section>
+
+<h2>About</h2>
+
+<p class="bio">
+{v["bio"]}
+</p>
+
+</section>
+
+
+
+<section>
+
+<h2>Skills</h2>
+
+<div class="skills-container">
+
+{skills_html}
+
+</div>
+
+</section>
+
+</div>
+
+
+
+<section>
+
+<h2>Experience</h2>
+
+{experience_html}
+
+</section>
+
+
+
+<section>
+
+<h2>Education</h2>
+
+{education_html}
+
+</section>
+
+
+
+</main>
+
+
+
+<footer>
+
+<div class="container">
+
+Generated with AI Portfolio Builder
+
+</div>
+
+</footer>
+
+
 </body>
-</html>"""
+</html>
+"""
 
 
 def css() -> str:
+
     return """
-:root {
-    --ink: #111827;
-    --ink-mid: #374151;
-    --ink-light: #6b7280;
-    --bg: #ffffff;
-    --bg-alt: #f9fafb;
-    --border: #e5e7eb;
-    --border-dark: #d1d5db;
+
+:root{
+
+--ink:#111827;
+--muted:#6b7280;
+
+--border:#e5e7eb;
+
+--bg:#ffffff;
+
 }
 
-* { margin: 0; padding: 0; box-sizing: border-box; }
 
-body {
-    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-    line-height: 1.65;
-    color: var(--ink);
-    background: var(--bg);
-}
+*{
 
-.container { max-width: 820px; margin: 0 auto; padding: 0 1.5rem; }
+margin:0;
+padding:0;
+box-sizing:border-box;
 
-/* Hero — white, strong border bottom */
-.hero {
-    background: var(--bg);
-    padding: 4rem 0 3rem;
-    border-bottom: 2.5px solid var(--ink);
-}
-.hero h1 {
-    font-size: 2.75rem;
-    font-weight: 700;
-    letter-spacing: -0.03em;
-    color: var(--ink);
-    margin-bottom: 0.4rem;
-}
-.headline {
-    font-size: 1.1rem;
-    color: var(--ink-mid);
-    font-weight: 400;
-    margin-bottom: 1.25rem;
-}
-.meta {
-    display: flex;
-    align-items: center;
-    gap: 1.5rem;
-    flex-wrap: wrap;
-}
-.location {
-    font-size: 0.9rem;
-    color: var(--ink-light);
 }
 
-.links { display: flex; gap: 0.75rem; flex-wrap: wrap; }
-.links a {
-    color: var(--ink);
-    text-decoration: none;
-    font-size: 0.875rem;
-    font-weight: 500;
-    padding-bottom: 1px;
-    border-bottom: 1.5px solid var(--border-dark);
-    transition: border-color 0.2s;
-}
-.links a:hover { border-bottom-color: var(--ink); }
 
-/* Content */
-main { padding: 3.5rem 0; }
-section { margin-bottom: 3.5rem; }
 
-/* H2 with animated underline */
-h2 {
-    font-size: 0.75rem;
-    font-weight: 600;
-    letter-spacing: 0.12em;
-    text-transform: uppercase;
-    color: var(--ink-light);
-    margin-bottom: 1.5rem;
-    display: flex;
-    align-items: center;
-    gap: 1rem;
-}
-h2::after {
-    content: '';
-    flex: 1;
-    height: 1px;
-    background: var(--border);
+body{
+
+font-family:'Inter',sans-serif;
+
+background:var(--bg);
+
+color:var(--ink);
+
+line-height:1.7;
+
 }
 
-.about p {
-    font-size: 1.05rem;
-    color: var(--ink-mid);
-    line-height: 1.8;
-    max-width: 680px;
+
+
+/* Container Upgrade */
+
+.container{
+
+max-width:1100px;
+
+margin:auto;
+
+padding:0 2rem;
+
 }
 
-/* Skills — minimal chips */
-.skills-container { display: flex; flex-wrap: wrap; gap: 0.5rem; }
-.skill-tag {
-    background: transparent;
-    color: var(--ink-mid);
-    padding: 0.3rem 0.75rem;
-    border-radius: 4px;
-    font-size: 0.85rem;
-    border: 1px solid var(--border-dark);
-    transition: background 0.15s, color 0.15s;
-}
-.skill-tag:hover {
-    background: var(--ink);
-    color: white;
-    border-color: var(--ink);
+
+
+/* Hero */
+
+.hero{
+
+padding:5rem 0 4rem;
+
+border-bottom:3px solid black;
+
 }
 
-/* Experience / Education */
-.experience-item, .education-item {
-    margin-bottom: 2.25rem;
-    padding-bottom: 2.25rem;
-    border-bottom: 1px solid var(--border);
-}
-.experience-item:last-child, .education-item:last-child {
-    border-bottom: none;
-    margin-bottom: 0;
-    padding-bottom: 0;
-}
-.experience-item h3, .education-item h3 {
-    font-size: 1rem;
-    font-weight: 600;
-    color: var(--ink);
-    margin-bottom: 0.2rem;
-}
-.duration {
-    font-size: 0.8rem;
-    color: var(--ink-light);
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    margin-bottom: 0.6rem;
-}
-.experience-item p { color: var(--ink-mid); font-size: 0.95rem; }
-.experience-item ul { margin-top: 0.6rem; padding-left: 1.1rem; }
-.experience-item li {
-    color: var(--ink-light);
-    font-size: 0.9rem;
-    margin-bottom: 0.2rem;
+
+
+.hero h1{
+
+font-size:clamp(2.8rem,5vw,3.8rem);
+
+margin-bottom:.6rem;
+
+letter-spacing:-.03em;
+
 }
 
-footer {
-    border-top: 1px solid var(--border);
-    padding: 2rem 0;
-    text-align: center;
-    color: var(--ink-light);
-    font-size: 0.8rem;
+
+
+.headline{
+
+font-size:1.2rem;
+
+color:var(--muted);
+
+margin-bottom:1.5rem;
+
+max-width:700px;
+
 }
 
-@media (max-width: 640px) {
-    .hero h1 { font-size: 2rem; }
-    .meta { flex-direction: column; align-items: flex-start; gap: 0.75rem; }
+
+
+.meta{
+
+display:flex;
+
+gap:20px;
+
+flex-wrap:wrap;
+
+align-items:center;
+
+}
+
+
+
+.links{
+
+display:flex;
+
+gap:10px;
+
+flex-wrap:wrap;
+
+}
+
+
+
+.links a{
+
+text-decoration:none;
+
+color:black;
+
+border-bottom:1px solid var(--border);
+
+padding-bottom:2px;
+
+}
+
+
+
+/* Main */
+
+main{
+
+padding:5rem 0;
+
+}
+
+
+
+section{
+
+margin-bottom:4rem;
+
+}
+
+
+
+h2{
+
+font-size:.75rem;
+
+letter-spacing:.15em;
+
+text-transform:uppercase;
+
+color:var(--muted);
+
+margin-bottom:1.5rem;
+
+display:flex;
+
+gap:12px;
+
+align-items:center;
+
+}
+
+
+
+h2::after{
+
+content:"";
+
+flex:1;
+
+height:1px;
+
+background:var(--border);
+
+}
+
+
+
+/* Bio */
+
+.bio{
+
+max-width:700px;
+
+line-height:1.9;
+
+color:#374151;
+
+}
+
+
+
+/* Skills */
+
+.skills-container{
+
+display:flex;
+
+flex-wrap:wrap;
+
+gap:8px;
+
+}
+
+
+
+.skill-tag{
+
+border:1px solid var(--border);
+
+padding:6px 12px;
+
+font-size:.85rem;
+
+}
+
+
+
+/* Experience Premium */
+
+.experience-item{
+
+margin-bottom:2.5rem;
+
+padding-bottom:2rem;
+
+border-bottom:1px solid var(--border);
+
+}
+
+
+
+.exp-header{
+
+display:flex;
+
+justify-content:space-between;
+
+flex-wrap:wrap;
+
+margin-bottom:6px;
+
+}
+
+
+
+.exp-role{
+
+font-weight:600;
+
+font-size:1.05rem;
+
+}
+
+
+
+.exp-company{
+
+color:var(--muted);
+
+font-size:.9rem;
+
+}
+
+
+
+.exp-duration{
+
+font-size:.8rem;
+
+color:var(--muted);
+
+}
+
+
+
+.experience-item p{
+
+margin-top:8px;
+
+color:#374151;
+
+}
+
+
+
+.experience-item ul{
+
+margin-top:10px;
+
+padding-left:18px;
+
+}
+
+
+
+.education-item{
+
+margin-bottom:1.5rem;
+
+}
+
+
+
+/* Footer */
+
+footer{
+
+border-top:1px solid var(--border);
+
+padding:2rem 0;
+
+text-align:center;
+
+color:var(--muted);
+
+}
+
+
+
+/* Mobile */
+
+@media(max-width:800px){
+
+.hero{
+
+padding:3rem 0;
+
+}
+
+}
+
+
+
+@media(min-width:900px){
+
+.section-grid{
+
+display:grid;
+
+grid-template-columns:3fr 2fr;
+
+gap:3rem;
+
+align-items:start;
+
+}
+
+.bio{
+
+max-width:none;
+
+}
+
 }
 """
 
 
-# ---------------------------------------------------------------------------
-# Internal helpers
-# ---------------------------------------------------------------------------
+# Helpers
+
 
 def _links(v: dict) -> str:
-    out = ''
-    if v['linkedin_url']:
-        out += (
-            f'<a href="{v["linkedin_url"]}" '
-            'target="_blank" rel="noopener noreferrer">LinkedIn</a>'
-        )
-    if v['github_url']:
-        out += (
-            f'<a href="{v["github_url"]}" '
-            'target="_blank" rel="noopener noreferrer">GitHub</a>'
-        )
+
+    out = ""
+
+    if v["linkedin_url"]:
+        out += f'<a href="{v["linkedin_url"]}">LinkedIn</a>'
+
+    if v["github_url"]:
+        out += f'<a href="{v["github_url"]}">GitHub</a>'
+
     return out
 
 
 def _email_link(email: str) -> str:
-    return f'<a href="mailto:{email}">Contact</a>' if email else ''
+
+    return f'<a href="mailto:{email}">Contact</a>' if email else ""
 
 
 def _skills(skills: list) -> str:
-    return ''.join(
-        f'<span class="skill-tag">{s}</span>'
-        for s in skills[:20]
-    )
+
+    return "".join(f'<span class="skill-tag">{s}</span>' for s in skills[:20])
 
 
 def _experience(items: list) -> str:
-    out = ''
+
+    out = ""
+
     for exp in items:
-        highlights = ''.join(
-            f'<li>{h}</li>' for h in exp['highlights']
-        )
+        highlights = "".join(f"<li>{h}</li>" for h in exp["highlights"])
+
         out += (
             f'<div class="experience-item">'
-            f'<h3>{exp["title"]} · {exp["company"]}</h3>'
-            f'<p class="duration">{exp["duration"]}</p>'
-            f'<p>{exp["description"]}</p>'
-            f'<ul>{highlights}</ul>'
-            f'</div>'
+            f'<div class="exp-header">'
+            f"<div>"
+            f'<div class="exp-role">{exp["title"]}</div>'
+            f'<div class="exp-company">{exp["company"]}</div>'
+            f"</div>"
+            f'<div class="exp-duration">{exp["duration"]}</div>'
+            f"</div>"
+            f"<p>{exp['description']}</p>"
+            f"<ul>{highlights}</ul>"
+            f"</div>"
         )
+
     return out
 
 
 def _education(items: list) -> str:
-    out = ''
+
+    out = ""
+
     for edu in items:
         out += (
             f'<div class="education-item">'
-            f'<h3>{edu["degree"]} in {edu["field"]}</h3>'
-            f'<p class="duration">{edu["institution"]} · {edu["year"]}</p>'
-            f'</div>'
+            f'<div class="exp-role">{edu["degree"]}</div>'
+            f'<div class="exp-duration">'
+            f"{edu['institution']} · {edu['year']}"
+            f"</div>"
+            f"</div>"
         )
+
     return out

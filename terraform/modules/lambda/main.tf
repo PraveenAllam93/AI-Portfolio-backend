@@ -177,15 +177,15 @@ resource "aws_iam_role_policy" "resume_ingestion_logs" {
 }
 
 resource "aws_iam_role_policy" "resume_ingestion_s3" {
-  name = "s3-read-validated"
+  name = "s3-read-write-validated"
   role = aws_iam_role.resume_ingestion.id
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [{
-      # GetObject covers both GetObject and HeadObject in IAM
-      Sid      = "ReadValidatedResume"
-      Effect   = "Allow"
-      Action   = ["s3:GetObject"]
+      Sid    = "ReadValidatedResume"
+      Effect = "Allow"
+      # GetObject covers HeadObject as well
+      Action   = ["s3:GetObject", "s3:PutObject"]
       Resource = "${var.validated_bucket_arn}/*"
     }]
   })
@@ -206,14 +206,19 @@ resource "aws_iam_role_policy" "resume_ingestion_sqs" {
 }
 
 resource "aws_iam_role_policy" "resume_ingestion_dynamodb" {
-  name = "dynamodb-update"
+  name = "dynamodb-update-get"
   role = aws_iam_role.resume_ingestion.id
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [{
-      Sid      = "UpdateUploadStatus"
-      Effect   = "Allow"
-      Action   = ["dynamodb:UpdateItem"]
+      Sid    = "UpdateUploadStatusAndReadDedup"
+      Effect = "Allow"
+      Action = [
+        "dynamodb:UpdateItem",
+        # GetItem: read CONTENT#{hash} dedup record to short-circuit
+        # duplicate uploads without hitting the AI pipeline.
+        "dynamodb:GetItem",
+      ]
       Resource = var.dynamodb_table_arn
     }]
   })
@@ -237,6 +242,22 @@ resource "aws_iam_role_policy" "ai_processing_logs" {
   policy = data.aws_iam_policy_document.cloudwatch_logs.json
 }
 
+resource "aws_iam_role_policy" "ai_processing_s3" {
+  name = "s3-read-resume-text"
+  role = aws_iam_role.ai_processing.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Sid    = "ReadResumeTextFile"
+      Effect = "Allow"
+      # Read the resume-text.txt written by the ingestion Lambda.
+      # Scoped to the validated bucket only — no other S3 access.
+      Action   = ["s3:GetObject"]
+      Resource = "${var.validated_bucket_arn}/*"
+    }]
+  })
+}
+
 resource "aws_iam_role_policy" "ai_processing_secrets" {
   name = "secrets-openai"
   role = aws_iam_role.ai_processing.id
@@ -252,17 +273,44 @@ resource "aws_iam_role_policy" "ai_processing_secrets" {
   })
 }
 
-resource "aws_iam_role_policy" "ai_processing_dynamodb" {
-  name = "dynamodb-write"
+resource "aws_iam_role_policy" "ai_processing_dynamodb_main" {
+  name = "dynamodb-write-main"
   role = aws_iam_role.ai_processing.id
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [{
-      Sid      = "WriteAIResults"
+      Sid      = "WriteAIResultsMain"
       Effect   = "Allow"
       Action   = ["dynamodb:UpdateItem", "dynamodb:PutItem"]
       Resource = var.dynamodb_table_arn
     }]
+  })
+}
+
+# PII table: PutItem only — ai_processing writes PII before the AI call.
+# Also needs KMS permissions to encrypt items with the PII table's CMK.
+resource "aws_iam_role_policy" "ai_processing_dynamodb_pii" {
+  name = "dynamodb-put-pii"
+  role = aws_iam_role.ai_processing.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid      = "WritePII"
+        Effect   = "Allow"
+        Action   = ["dynamodb:PutItem"]
+        Resource = var.pii_table_arn
+      },
+      {
+        Sid    = "EncryptPIIItems"
+        Effect = "Allow"
+        Action = [
+          "kms:GenerateDataKey",
+          "kms:Decrypt",
+        ]
+        Resource = var.pii_kms_key_arn
+      },
+    ]
   })
 }
 
@@ -301,7 +349,8 @@ resource "aws_iam_role_policy" "ai_processing_invoke_portfolio" {
 
 # =============================================================================
 # 5. PORTFOLIO GENERATOR LAMBDA
-# Needs: s3:PutObject on portfolio bucket, dynamodb:GetItem+UpdateItem
+# Needs: s3:PutObject on portfolio bucket, dynamodb:GetItem+UpdateItem,
+#        cloudfront:CreateInvalidation to flush the CDN after each publish
 # =============================================================================
 
 resource "aws_iam_role" "portfolio_generator" {
@@ -330,8 +379,8 @@ resource "aws_iam_role_policy" "portfolio_generator_s3" {
   })
 }
 
-resource "aws_iam_role_policy" "portfolio_generator_dynamodb" {
-  name = "dynamodb-read-update"
+resource "aws_iam_role_policy" "portfolio_generator_dynamodb_main" {
+  name = "dynamodb-read-update-main"
   role = aws_iam_role.portfolio_generator.id
   policy = jsonencode({
     Version = "2012-10-17"
@@ -340,6 +389,47 @@ resource "aws_iam_role_policy" "portfolio_generator_dynamodb" {
       Effect   = "Allow"
       Action   = ["dynamodb:GetItem", "dynamodb:UpdateItem"]
       Resource = var.dynamodb_table_arn
+    }]
+  })
+}
+
+# PII table: GetItem only — read PII tokens at render time to unmask HTML.
+# Also needs KMS:Decrypt to read CMK-encrypted items.
+resource "aws_iam_role_policy" "portfolio_generator_dynamodb_pii" {
+  name = "dynamodb-get-pii"
+  role = aws_iam_role.portfolio_generator.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid      = "ReadPII"
+        Effect   = "Allow"
+        Action   = ["dynamodb:GetItem"]
+        Resource = var.pii_table_arn
+      },
+      {
+        Sid      = "DecryptPIIItems"
+        Effect   = "Allow"
+        Action   = ["kms:Decrypt"]
+        Resource = var.pii_kms_key_arn
+      },
+    ]
+  })
+}
+
+# CloudFront: CreateInvalidation scoped to the single portfolio distribution.
+# Condition guards against the empty-string default used in test environments.
+resource "aws_iam_role_policy" "portfolio_generator_cloudfront" {
+  count = var.cloudfront_distribution_arn != "" ? 1 : 0
+  name  = "cloudfront-invalidate"
+  role  = aws_iam_role.portfolio_generator.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Sid      = "InvalidatePortfolioCache"
+      Effect   = "Allow"
+      Action   = ["cloudfront:CreateInvalidation"]
+      Resource = var.cloudfront_distribution_arn
     }]
   })
 }
@@ -377,6 +467,70 @@ resource "aws_iam_role_policy" "api_read_dynamodb" {
 }
 
 # =============================================================================
+# DEPLOYMENT ARTIFACTS BUCKET
+# Stores large Lambda layer zips (>70 MB) that exceed the direct-upload
+# API limit. Lambda layers reference objects here via s3_bucket/s3_key.
+# =============================================================================
+
+resource "aws_s3_bucket" "lambda_artifacts" {
+  bucket        = "${var.name_prefix}-lambda-artifacts"
+  force_destroy = true
+
+  tags = var.tags
+}
+
+resource "aws_s3_bucket_versioning" "lambda_artifacts" {
+  bucket = aws_s3_bucket.lambda_artifacts.id
+  versioning_configuration {
+    status = "Enabled"
+  }
+}
+
+resource "aws_s3_bucket_public_access_block" "lambda_artifacts" {
+  bucket                  = aws_s3_bucket.lambda_artifacts.id
+  block_public_acls       = true
+  block_public_policy     = true
+  ignore_public_acls      = true
+  restrict_public_buckets = true
+}
+
+# =============================================================================
+# PRESIDIO LAMBDA LAYER
+# Provides Microsoft Presidio (PII detection) + spaCy en_core_web_sm.
+# Build the zip before terraform apply:
+#   ./scripts/build_presidio_layer.sh
+# Uploaded to S3 first to bypass the 70 MB direct-upload API limit.
+# =============================================================================
+
+resource "aws_s3_object" "presidio_layer_zip" {
+  bucket = aws_s3_bucket.lambda_artifacts.id
+  key    = "layers/presidio.zip"
+  source = "${path.module}/../../../dist/layers/presidio.zip"
+
+  # Recompute etag so Terraform re-uploads when zip content changes.
+  etag = filemd5("${path.module}/../../../dist/layers/presidio.zip")
+}
+
+resource "aws_lambda_layer_version" "presidio" {
+  layer_name = "${var.name_prefix}-presidio"
+
+  s3_bucket = aws_s3_bucket.lambda_artifacts.id
+  s3_key    = aws_s3_object.presidio_layer_zip.key
+
+  compatible_runtimes = ["python3.12"]
+
+  source_code_hash = filebase64sha256(
+    "${path.module}/../../../dist/layers/presidio.zip"
+  )
+
+  lifecycle {
+    create_before_destroy = true
+  }
+
+  depends_on = [aws_s3_object.presidio_layer_zip]
+}
+
+# =============================================================================
 # LAMBDA FUNCTION DEFINITIONS
 # =============================================================================
 
@@ -409,7 +563,7 @@ resource "aws_lambda_function" "get_presigned_url" {
       PRESIGNED_URL_EXPIRY_SECONDS = var.presigned_url_expiry_seconds
       ALLOWED_EXTENSIONS           = join(",", var.allowed_file_extensions)
       ALLOWED_MIME_TYPES           = join(",", var.allowed_mime_types)
-      DYNAMODB_TABLE               = var.dynamodb_table_name
+      MAIN_TABLE                   = var.dynamodb_table_name
       ENVIRONMENT                  = var.environment
     }
   }
@@ -447,7 +601,7 @@ resource "aws_lambda_function" "quarantine_validator" {
       QUARANTINE_BUCKET  = var.quarantine_bucket_name
       VALIDATED_BUCKET   = var.validated_bucket_name
       REJECTED_BUCKET    = var.rejected_bucket_name
-      DYNAMODB_TABLE     = var.dynamodb_table_name
+      MAIN_TABLE         = var.dynamodb_table_name
       ALLOWED_EXTENSIONS = join(",", var.allowed_file_extensions)
       ALLOWED_MIME_TYPES = join(",", var.allowed_mime_types)
       MAX_FILE_SIZE_MB   = var.max_upload_size_mb
@@ -494,7 +648,7 @@ resource "aws_lambda_function" "resume_ingestion" {
   environment {
     variables = {
       VALIDATED_BUCKET = var.validated_bucket_name
-      DYNAMODB_TABLE   = var.dynamodb_table_name
+      MAIN_TABLE       = var.dynamodb_table_name
       PROCESSING_QUEUE = var.processing_queue_url
       ENVIRONMENT      = var.environment
     }
@@ -532,15 +686,23 @@ resource "aws_lambda_function" "ai_processing" {
   source_code_hash = data.archive_file.ai_processing.output_base64sha256
   runtime          = "python3.12"
   timeout          = 300
-  memory_size      = 512
+  # Increased to 1 GB: spaCy en_core_web_sm NER requires more headroom
+  # than the default 512 MB, especially on cold starts.
+  memory_size      = 1024
+
+  # Presidio layer (Presidio + spaCy + en_core_web_sm).
+  # Build with scripts/build_presidio_layer.sh before terraform apply.
+  layers = [aws_lambda_layer_version.presidio.arn]
 
   reserved_concurrent_executions = var.reserved_concurrency
 
   environment {
     variables = {
-      DYNAMODB_TABLE        = var.dynamodb_table_name
+      MAIN_TABLE            = var.dynamodb_table_name
+      PII_TABLE             = var.pii_table_name
       OPENAI_SECRET_NAME    = var.openai_api_key_secret_name
       PORTFOLIO_BUCKET      = var.portfolio_bucket_name
+      VALIDATED_BUCKET      = var.validated_bucket_name
       ENVIRONMENT           = var.environment
       PORTFOLIO_LAMBDA_NAME = "${var.name_prefix}-portfolio-generator"
     }
@@ -586,9 +748,11 @@ resource "aws_lambda_function" "portfolio_generator" {
 
   environment {
     variables = {
-      PORTFOLIO_BUCKET = var.portfolio_bucket_name
-      DYNAMODB_TABLE   = var.dynamodb_table_name
-      ENVIRONMENT      = var.environment
+      PORTFOLIO_BUCKET             = var.portfolio_bucket_name
+      MAIN_TABLE                   = var.dynamodb_table_name
+      PII_TABLE                    = var.pii_table_name
+      CLOUDFRONT_DISTRIBUTION_ID   = var.cloudfront_distribution_id
+      ENVIRONMENT                  = var.environment
     }
   }
 
@@ -622,7 +786,7 @@ resource "aws_lambda_function" "get_portfolio" {
 
   environment {
     variables = {
-      DYNAMODB_TABLE   = var.dynamodb_table_name
+      MAIN_TABLE       = var.dynamodb_table_name
       PORTFOLIO_BUCKET = var.portfolio_bucket_name
       ENVIRONMENT      = var.environment
     }
@@ -653,8 +817,8 @@ resource "aws_lambda_function" "get_status" {
 
   environment {
     variables = {
-      DYNAMODB_TABLE = var.dynamodb_table_name
-      ENVIRONMENT    = var.environment
+      MAIN_TABLE  = var.dynamodb_table_name
+      ENVIRONMENT = var.environment
     }
   }
 
@@ -702,11 +866,10 @@ resource "aws_iam_role_policy" "process_access_logs_dynamodb" {
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [{
-      Sid    = "WriteViewEvents"
-      Effect = "Allow"
-      Action = ["dynamodb:BatchWriteItem"]
-      # Scoped to the table only; LeadingKeys condition enforced in Lambda code.
-      Resource = var.dynamodb_table_arn
+      Sid      = "WriteViewEvents"
+      Effect   = "Allow"
+      Action   = ["dynamodb:BatchWriteItem"]
+      Resource = var.analytics_table_arn
     }]
   })
 }
@@ -731,8 +894,8 @@ resource "aws_lambda_function" "process_access_logs" {
 
   environment {
     variables = {
-      DYNAMODB_TABLE = var.dynamodb_table_name
-      ENVIRONMENT    = var.environment
+      ANALYTICS_TABLE = var.analytics_table_name
+      ENVIRONMENT     = var.environment
     }
   }
 
@@ -778,10 +941,9 @@ resource "aws_iam_role_policy" "analytics_dynamodb" {
       Effect = "Allow"
       Action = ["dynamodb:Query"]
       Resource = [
-        var.dynamodb_table_arn,
-        "${var.dynamodb_table_arn}/index/*",
+        var.analytics_table_arn,
+        "${var.analytics_table_arn}/index/*",
       ]
-      # Belt-and-suspenders: restrict to PORTFOLIO#* partition keys even at IAM level.
       Condition = {
         "ForAllValues:StringLike" = {
           "dynamodb:LeadingKeys" = ["PORTFOLIO#*"]
@@ -806,9 +968,9 @@ resource "aws_lambda_function" "get_analytics" {
 
   environment {
     variables = {
-      DYNAMODB_TABLE = var.dynamodb_table_name
-      ALLOWED_ORIGIN = var.allowed_origin
-      ENVIRONMENT    = var.environment
+      ANALYTICS_TABLE = var.analytics_table_name
+      ALLOWED_ORIGIN  = var.allowed_origin
+      ENVIRONMENT     = var.environment
     }
   }
 
@@ -883,7 +1045,7 @@ resource "aws_lambda_function" "patch_portfolio" {
 
   environment {
     variables = {
-      DYNAMODB_TABLE        = var.dynamodb_table_name
+      MAIN_TABLE            = var.dynamodb_table_name
       PORTFOLIO_LAMBDA_NAME = "${var.name_prefix}-portfolio-generator"
       ALLOWED_ORIGIN        = var.allowed_origin
       ENVIRONMENT           = var.environment
@@ -962,7 +1124,7 @@ resource "aws_lambda_function" "ai_enhance_portfolio" {
 
   environment {
     variables = {
-      DYNAMODB_TABLE     = var.dynamodb_table_name
+      MAIN_TABLE         = var.dynamodb_table_name
       OPENAI_SECRET_NAME = var.openai_api_key_secret_name
       ALLOWED_ORIGIN     = var.allowed_origin
       ENVIRONMENT        = var.environment
@@ -972,5 +1134,40 @@ resource "aws_lambda_function" "ai_enhance_portfolio" {
   tags = merge(var.tags, {
     Name     = "${var.name_prefix}-ai-enhance-portfolio"
     Function = "AI portfolio field enhancement - suggestion only"
+  })
+}
+
+# =============================================================================
+# 12. GET TEMPLATES LAMBDA
+# GET /templates — public, no authentication.
+# Returns the hardcoded template catalog; no AWS calls at runtime.
+# Reuses the same auth/ zip and api_read role (no DynamoDB access needed —
+# the role is only attached for IAM identity; the policy grants nothing
+# beyond CloudWatch Logs which every Lambda needs).
+# =============================================================================
+
+resource "aws_lambda_function" "get_templates" {
+  # Reuses the same auth/ zip — handler file is get_templates.py
+  filename         = data.archive_file.get_portfolio.output_path
+  function_name    = "${var.name_prefix}-get-templates"
+  role             = aws_iam_role.api_read.arn
+  handler          = "get_templates.lambda_handler"
+  source_code_hash = data.archive_file.get_portfolio.output_base64sha256
+  runtime          = "python3.12"
+  timeout          = var.timeout
+  memory_size      = var.memory_size
+
+  reserved_concurrent_executions = var.reserved_concurrency
+
+  environment {
+    variables = {
+      ALLOWED_ORIGIN = var.allowed_origin
+      ENVIRONMENT    = var.environment
+    }
+  }
+
+  tags = merge(var.tags, {
+    Name     = "${var.name_prefix}-get-templates"
+    Function = "Template catalog - public no auth"
   })
 }

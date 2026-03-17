@@ -34,7 +34,7 @@ from boto3.dynamodb.conditions import Key
 
 dynamodb = boto3.resource('dynamodb')
 
-DYNAMODB_TABLE = os.environ.get('DYNAMODB_TABLE')
+ANALYTICS_TABLE = os.environ.get('ANALYTICS_TABLE')
 ALLOWED_ORIGIN = os.environ.get('ALLOWED_ORIGIN', '*')
 
 # ---------------------------------------------------------------------------
@@ -97,7 +97,7 @@ def lambda_handler(event, context):
         return _response(403, {'error': 'Forbidden'})
 
     try:
-        table = dynamodb.Table(DYNAMODB_TABLE)
+        table = dynamodb.Table(ANALYTICS_TABLE)
 
         # Query all VIEW# records for this portfolio owner.
         # PK = PORTFOLIO#{userId}, SK begins_with VIEW#

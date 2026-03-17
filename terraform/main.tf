@@ -156,9 +156,18 @@ module "lambda" {
   access_logs_bucket_arn  = module.s3.access_logs_bucket_arn
   access_logs_bucket_name = module.s3.access_logs_bucket_name
 
-  # DynamoDB
-  dynamodb_table_arn      = module.dynamodb.table_arn
-  dynamodb_table_name     = module.dynamodb.table_name
+  # DynamoDB — main table (pipeline records)
+  dynamodb_table_arn   = module.dynamodb.table_arn
+  dynamodb_table_name  = module.dynamodb.table_name
+
+  # DynamoDB — PII table
+  pii_table_arn   = module.dynamodb.pii_table_arn
+  pii_table_name  = module.dynamodb.pii_table_name
+  pii_kms_key_arn = module.dynamodb.pii_kms_key_arn
+
+  # DynamoDB — analytics table
+  analytics_table_arn  = module.dynamodb.analytics_table_arn
+  analytics_table_name = module.dynamodb.analytics_table_name
 
   # SQS
   processing_queue_arn    = module.sqs.processing_queue_arn
@@ -179,6 +188,10 @@ module "lambda" {
 
   # CORS: lock to your frontend domain in prod (e.g. https://app.example.com)
   allowed_origin = var.allowed_origin
+
+  # CloudFront — passed so portfolio-generator can invalidate the cache after publish
+  cloudfront_distribution_id  = module.cloudfront.distribution_id
+  cloudfront_distribution_arn = module.cloudfront.distribution_arn
 
   tags = local.common_tags
 }
@@ -213,6 +226,8 @@ module "api_gateway" {
   patch_portfolio_lambda_invoke_arn          = module.lambda.patch_portfolio_invoke_arn
   ai_enhance_portfolio_lambda_arn            = module.lambda.ai_enhance_portfolio_arn
   ai_enhance_portfolio_lambda_invoke_arn     = module.lambda.ai_enhance_portfolio_invoke_arn
+  get_templates_lambda_arn                   = module.lambda.get_templates_arn
+  get_templates_lambda_invoke_arn            = module.lambda.get_templates_invoke_arn
 
   tags = local.common_tags
 }
@@ -237,7 +252,11 @@ module "cloudfront" {
   # Access logs bucket — CloudFront writes compressed logs here every ~5 min.
   # Must use bucket_domain_name (not regional) per CloudFront logging requirement.
   access_logs_bucket_domain = module.s3.access_logs_bucket_domain
-  tags                      = local.common_tags
+  # Templates bucket — serves /templates/* preview HTML via CloudFront OAC
+  templates_bucket_arn    = module.s3.templates_bucket_arn
+  templates_bucket_id     = module.s3.templates_bucket_id
+  templates_bucket_domain = module.s3.templates_bucket_domain
+  tags                    = local.common_tags
 }
 
 # -----------------------------------------------------------------------------

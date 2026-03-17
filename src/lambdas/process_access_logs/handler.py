@@ -47,7 +47,7 @@ from boto3.dynamodb.types import TypeSerializer
 s3_client = boto3.client('s3')
 dynamodb = boto3.client('dynamodb')  # low-level client for batch_write_item
 
-DYNAMODB_TABLE = os.environ.get('DYNAMODB_TABLE')
+ANALYTICS_TABLE = os.environ.get('ANALYTICS_TABLE')
 _serializer = TypeSerializer()
 
 # ---------------------------------------------------------------------------
@@ -354,7 +354,7 @@ def _write_views_to_dynamodb(views: list[dict]) -> None:
     if not views:
         return
 
-    table_name = DYNAMODB_TABLE
+    table_name = ANALYTICS_TABLE
 
     def _to_put_request(view: dict) -> dict:
         sk_suffix = uuid.uuid4().hex[:8]

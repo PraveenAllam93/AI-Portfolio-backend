@@ -41,7 +41,7 @@ import boto3
 dynamodb = boto3.resource('dynamodb')
 secrets_client = boto3.client('secretsmanager')
 
-DYNAMODB_TABLE = os.environ.get('DYNAMODB_TABLE')
+MAIN_TABLE = os.environ.get('MAIN_TABLE')
 OPENAI_SECRET_NAME = os.environ.get('OPENAI_SECRET_NAME')
 ALLOWED_ORIGIN = os.environ.get('ALLOWED_ORIGIN', '*')
 
@@ -218,7 +218,7 @@ def lambda_handler(event, context):
     # Fetch current field value from DynamoDB
     # ------------------------------------------------------------------
     try:
-        table = dynamodb.Table(DYNAMODB_TABLE)
+        table = dynamodb.Table(MAIN_TABLE)
         result = table.get_item(
             Key={'PK': f'USER#{path_user_id}', 'SK': 'PORTFOLIO#current'},
             ProjectionExpression='portfolioContent',

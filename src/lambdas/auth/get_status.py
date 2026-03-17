@@ -8,7 +8,7 @@ import os
 import boto3
 
 dynamodb = boto3.resource('dynamodb')
-DYNAMODB_TABLE = os.environ.get('DYNAMODB_TABLE')
+MAIN_TABLE = os.environ.get('MAIN_TABLE')
 
 # ---------------------------------------------------------------------------
 # Structured logger — outputs JSON to stdout, captured by CloudWatch Logs
@@ -87,7 +87,7 @@ def lambda_handler(event, context):
                   userId=user_id, uploadId=upload_id)
 
         # Get status from DynamoDB — PK/SK scoped to this user, no cross-user access possible
-        table = dynamodb.Table(DYNAMODB_TABLE)
+        table = dynamodb.Table(MAIN_TABLE)
         response = table.get_item(
             Key={
                 'PK': f'USER#{user_id}',

@@ -26,6 +26,14 @@ resource "aws_cloudfront_origin_access_control" "portfolio" {
   signing_protocol                  = "sigv4"
 }
 
+resource "aws_cloudfront_origin_access_control" "templates" {
+  name                              = "${var.name_prefix}-templates-oac"
+  description                       = "OAC for templates S3 bucket"
+  origin_access_control_origin_type = "s3"
+  signing_behavior                  = "always"
+  signing_protocol                  = "sigv4"
+}
+
 # -----------------------------------------------------------------------------
 # CLOUDFRONT DISTRIBUTION
 # -----------------------------------------------------------------------------
@@ -53,6 +61,35 @@ resource "aws_cloudfront_distribution" "portfolio" {
     origin_access_control_id = aws_cloudfront_origin_access_control.portfolio.id
   }
 
+  # Origin: Templates S3 bucket (preview HTML files)
+  origin {
+    domain_name              = var.templates_bucket_domain
+    origin_id                = "S3-${var.templates_bucket_id}"
+    origin_access_control_id = aws_cloudfront_origin_access_control.templates.id
+  }
+
+  # Cache behavior for /templates/* — routes to templates bucket
+  # Long TTL since preview files only change on a new deploy.
+  ordered_cache_behavior {
+    path_pattern     = "templates/*"
+    allowed_methods  = ["GET", "HEAD"]
+    cached_methods   = ["GET", "HEAD"]
+    target_origin_id = "S3-${var.templates_bucket_id}"
+
+    forwarded_values {
+      query_string = false
+      cookies {
+        forward = "none"
+      }
+    }
+
+    viewer_protocol_policy = "redirect-to-https"
+    min_ttl                = 0
+    default_ttl            = 86400    # 24 hours
+    max_ttl                = 604800   # 7 days
+    compress               = true
+  }
+
   # Default cache behavior
   default_cache_behavior {
     allowed_methods  = ["GET", "HEAD", "OPTIONS"]
@@ -68,8 +105,8 @@ resource "aws_cloudfront_distribution" "portfolio" {
 
     viewer_protocol_policy = "redirect-to-https"
     min_ttl                = 0
-    default_ttl            = 3600     # 1 hour
-    max_ttl                = 86400    # 24 hours
+    default_ttl            = 90     # 1.5 minutes
+    max_ttl                = 600    # 10 minutes
     compress               = true
   }
 
@@ -131,4 +168,30 @@ data "aws_iam_policy_document" "portfolio_bucket_policy" {
 resource "aws_s3_bucket_policy" "portfolio" {
   bucket = var.portfolio_bucket_id
   policy = data.aws_iam_policy_document.portfolio_bucket_policy.json
+}
+
+data "aws_iam_policy_document" "templates_bucket_policy" {
+  statement {
+    sid    = "AllowCloudFrontServicePrincipal"
+    effect = "Allow"
+
+    principals {
+      type        = "Service"
+      identifiers = ["cloudfront.amazonaws.com"]
+    }
+
+    actions   = ["s3:GetObject"]
+    resources = ["${var.templates_bucket_arn}/*"]
+
+    condition {
+      test     = "StringEquals"
+      variable = "AWS:SourceArn"
+      values   = [aws_cloudfront_distribution.portfolio.arn]
+    }
+  }
+}
+
+resource "aws_s3_bucket_policy" "templates" {
+  bucket = var.templates_bucket_id
+  policy = data.aws_iam_policy_document.templates_bucket_policy.json
 }

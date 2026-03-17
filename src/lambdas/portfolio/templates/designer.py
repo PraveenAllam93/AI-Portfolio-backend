@@ -1,11 +1,14 @@
 """
-Template: Modern (v2 Professional Default)
+Template: Designer
 
-Upgrades:
-- Wider layout
-- Premium hero spacing
-- Professional experience layout
-- Cleaner cards
+Visual designer-focused portfolio.
+
+Features:
+- Large hero typography
+- Optional profile image
+- Grid-based experience cards
+- Bold skill highlights
+- Smooth animations
 """
 
 from .base import CSP, FONTS_URL
@@ -19,19 +22,27 @@ def html(v: dict) -> str:
     experience_html = _experience(v["experience"])
     education_html = _education(v["education"])
 
+    image_html = (
+        f'<img class="profile-img" src="{v["profile_image"]}">'
+        if v.get("profile_image")
+        else ""
+    )
+
     return f"""<!DOCTYPE html>
-<html lang="en">
+<html>
 
 <head>
 
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<meta name="viewport" content="width=device-width">
 
 <meta http-equiv="Content-Security-Policy" content="{CSP}">
 
 <title>{v["name"]} Portfolio</title>
 
 <link rel="stylesheet" href="styles.css">
+
 <link href="{FONTS_URL}" rel="stylesheet">
 
 </head>
@@ -40,28 +51,32 @@ def html(v: dict) -> str:
 <body>
 
 
+
 <header class="hero">
 
-<div class="container">
+<div class="container hero-inner">
+
+<div class="hero-text">
 
 <h1>{v["name"]}</h1>
 
 <p class="headline">
-{v["headline"]}
-</p>
 
-<p class="location">
-{v["location"]}
+{v["headline"]}
+
 </p>
 
 
 <div class="links">
 
 {links_html}
-
 {email_link}
 
 </div>
+
+</div>
+
+{image_html}
 
 </div>
 
@@ -72,6 +87,7 @@ def html(v: dict) -> str:
 <main class="container">
 
 
+
 <div class="section-grid">
 
 <section>
@@ -79,7 +95,9 @@ def html(v: dict) -> str:
 <h2>About</h2>
 
 <p class="bio">
+
 {v["bio"]}
+
 </p>
 
 </section>
@@ -90,7 +108,7 @@ def html(v: dict) -> str:
 
 <h2>Skills</h2>
 
-<div class="skills-container">
+<div class="skills">
 
 {skills_html}
 
@@ -106,7 +124,11 @@ def html(v: dict) -> str:
 
 <h2>Experience</h2>
 
+<div class="grid">
+
 {experience_html}
+
+</div>
 
 </section>
 
@@ -130,14 +152,16 @@ def html(v: dict) -> str:
 
 <div class="container">
 
-Generated with AI Portfolio Builder
+Built with AI Portfolio Builder
 
 </div>
 
 </footer>
 
 
+
 </body>
+
 </html>
 """
 
@@ -148,14 +172,17 @@ def css() -> str:
 
 :root{
 
---primary:#2563eb;
---primary-dark:#1d4ed8;
+--primary:#111827;
 
---text:#1f2937;
---muted:#6b7280;
+--accent:#2563eb;
 
 --bg:#ffffff;
---bg-alt:#f9fafb;
+
+--card:#f9fafb;
+
+--text:#111827;
+
+--muted:#6b7280;
 
 --border:#e5e7eb;
 
@@ -164,30 +191,28 @@ def css() -> str:
 
 
 *{
-
 margin:0;
 padding:0;
 box-sizing:border-box;
-
 }
 
 
 
 body{
 
-font-family:'Inter',sans-serif;
+font-family:'Inter';
 
 background:var(--bg);
 
 color:var(--text);
 
-line-height:1.7;
+line-height:1.6;
 
 }
 
 
 
-/* Container Upgrade */
+/* Layout */
 
 .container{
 
@@ -205,13 +230,33 @@ padding:0 2rem;
 
 .hero{
 
-background:linear-gradient(135deg,var(--primary),var(--primary-dark));
+padding:6rem 0;
 
-color:white;
+}
 
-padding:5.5rem 0 4.5rem;
 
-text-align:center;
+
+.hero-inner{
+
+display:flex;
+
+align-items:center;
+
+justify-content:space-between;
+
+gap:40px;
+
+flex-wrap:wrap;
+
+}
+
+
+
+.hero-text{
+
+flex:1;
+
+min-width:250px;
 
 }
 
@@ -219,11 +264,11 @@ text-align:center;
 
 .hero h1{
 
-font-size:clamp(2.8rem,5vw,3.6rem);
+font-size:4rem;
 
-margin-bottom:.5rem;
+line-height:1.1;
 
-letter-spacing:-.02em;
+margin-bottom:15px;
 
 }
 
@@ -233,36 +278,39 @@ letter-spacing:-.02em;
 
 font-size:1.2rem;
 
-opacity:.9;
+color:var(--muted);
 
-margin-bottom:.5rem;
-
-max-width:700px;
-
-margin-left:auto;
-margin-right:auto;
+margin-bottom:25px;
 
 }
 
 
 
-.location{
+/* Profile image */
 
-opacity:.75;
+.profile-img{
 
-margin-bottom:2rem;
+width:260px;
+
+height:260px;
+
+object-fit:cover;
+
+border-radius:20px;
+
+box-shadow:0 10px 30px rgba(0,0,0,.15);
 
 }
 
 
+
+/* Links */
 
 .links{
 
 display:flex;
 
 gap:10px;
-
-justify-content:center;
 
 flex-wrap:wrap;
 
@@ -272,17 +320,17 @@ flex-wrap:wrap;
 
 .links a{
 
-border:1px solid rgba(255,255,255,.35);
+border:1px solid var(--border);
 
-padding:8px 16px;
+padding:10px 18px;
 
-border-radius:6px;
-
-color:white;
+border-radius:8px;
 
 text-decoration:none;
 
-font-size:.9rem;
+color:var(--text);
+
+transition:.2s;
 
 }
 
@@ -290,17 +338,21 @@ font-size:.9rem;
 
 .links a:hover{
 
-background:rgba(255,255,255,.15);
+background:var(--accent);
+
+color:white;
+
+border-color:var(--accent);
 
 }
 
 
 
-/* Main */
+/* Sections */
 
 main{
 
-padding:5rem 0;
+padding:2rem 0 4rem;
 
 }
 
@@ -314,17 +366,11 @@ margin-bottom:4rem;
 
 
 
-/* Headings */
-
 h2{
-
-font-size:1.45rem;
 
 margin-bottom:1.5rem;
 
-padding-bottom:.6rem;
-
-border-bottom:2px solid var(--primary);
+font-size:1.6rem;
 
 }
 
@@ -336,9 +382,9 @@ border-bottom:2px solid var(--primary);
 
 max-width:700px;
 
-line-height:1.9;
+color:var(--muted);
 
-color:#374151;
+line-height:1.8;
 
 }
 
@@ -346,107 +392,117 @@ color:#374151;
 
 /* Skills */
 
-.skills-container{
+.skills{
 
 display:flex;
 
 flex-wrap:wrap;
 
-gap:8px;
+gap:10px;
 
 }
 
 
 
-.skill-tag{
+.skill{
 
-background:var(--bg-alt);
-
-padding:6px 12px;
-
-border-radius:20px;
-
-font-size:.85rem;
+background:var(--card);
 
 border:1px solid var(--border);
 
-}
+padding:8px 16px;
 
+border-radius:30px;
 
-
-/* Experience */
-
-.experience-item{
-
-background:var(--bg-alt);
-
-padding:1.6rem;
-
-border-radius:10px;
-
-margin-bottom:1.5rem;
-
-border-left:4px solid var(--primary);
+transition:.2s;
 
 }
 
 
 
-.exp-header{
+.skill:hover{
 
-display:flex;
+background:var(--accent);
 
-justify-content:space-between;
-
-flex-wrap:wrap;
-
-margin-bottom:6px;
+color:white;
 
 }
 
 
 
-.exp-role{
+/* Grid cards */
+
+.grid{
+
+display:grid;
+
+grid-template-columns:repeat(auto-fit,minmax(280px,1fr));
+
+gap:20px;
+
+}
+
+
+
+.card{
+
+background:var(--card);
+
+padding:20px;
+
+border-radius:12px;
+
+border:1px solid var(--border);
+
+transition:.2s;
+
+}
+
+
+
+.card:hover{
+
+transform:translateY(-4px);
+
+box-shadow:0 10px 25px rgba(0,0,0,.1);
+
+}
+
+
+
+.card-title{
 
 font-weight:600;
 
-font-size:1.05rem;
+margin-bottom:5px;
 
 }
 
 
 
-.exp-company{
+.card-meta{
+
+font-size:14px;
 
 color:var(--muted);
 
-font-size:.9rem;
+margin-bottom:10px;
 
 }
 
 
 
-.exp-duration{
-
-font-size:.8rem;
+.card-body{
 
 color:var(--muted);
 
-}
-
-
-
-.experience-item p{
-
-margin-top:8px;
-
-color:#374151;
+font-size:15px;
 
 }
 
 
 
-.experience-item ul{
+.card-list{
 
 margin-top:10px;
 
@@ -456,31 +512,13 @@ padding-left:18px;
 
 
 
-.education-item{
-
-background:var(--bg-alt);
-
-padding:1.4rem;
-
-border-radius:10px;
-
-margin-bottom:1rem;
-
-}
-
-
-
-/* Footer */
-
 footer{
 
-background:var(--bg-alt);
+border-top:1px solid var(--border);
 
 padding:2rem 0;
 
 text-align:center;
-
-margin-top:4rem;
 
 color:var(--muted);
 
@@ -490,11 +528,20 @@ color:var(--muted);
 
 /* Mobile */
 
-@media(max-width:800px){
+@media(max-width:700px){
 
-.hero{
+.hero h1{
 
-padding:4rem 0;
+font-size:2.4rem;
+
+}
+
+
+.profile-img{
+
+width:200px;
+
+height:200px;
 
 }
 
@@ -527,9 +574,6 @@ max-width:none;
 """
 
 
-# Helpers
-
-
 def _links(v: dict) -> str:
 
     out = ""
@@ -550,7 +594,7 @@ def _email_link(email: str) -> str:
 
 def _skills(skills: list) -> str:
 
-    return "".join(f'<span class="skill-tag">{s}</span>' for s in skills[:20])
+    return "".join(f'<span class="skill">{s}</span>' for s in skills[:24])
 
 
 def _experience(items: list) -> str:
@@ -561,16 +605,11 @@ def _experience(items: list) -> str:
         highlights = "".join(f"<li>{h}</li>" for h in exp["highlights"])
 
         out += (
-            f'<div class="experience-item">'
-            f'<div class="exp-header">'
-            f"<div>"
-            f'<div class="exp-role">{exp["title"]}</div>'
-            f'<div class="exp-company">{exp["company"]}</div>'
-            f"</div>"
-            f'<div class="exp-duration">{exp["duration"]}</div>'
-            f"</div>"
-            f"<p>{exp['description']}</p>"
-            f"<ul>{highlights}</ul>"
+            f'<div class="card">'
+            f'<div class="card-title">{exp["title"]}</div>'
+            f'<div class="card-meta">{exp["company"]} · {exp["duration"]}</div>'
+            f'<div class="card-body">{exp["description"]}</div>'
+            f'<ul class="card-list">{highlights}</ul>'
             f"</div>"
         )
 
@@ -583,11 +622,9 @@ def _education(items: list) -> str:
 
     for edu in items:
         out += (
-            f'<div class="education-item">'
-            f'<div class="exp-role">{edu["degree"]}</div>'
-            f'<div class="exp-duration">'
-            f"{edu['institution']} · {edu['year']}"
-            f"</div>"
+            f'<div class="card">'
+            f'<div class="card-title">{edu["degree"]}</div>'
+            f'<div class="card-meta">{edu["institution"]} · {edu["year"]}</div>'
             f"</div>"
         )
 

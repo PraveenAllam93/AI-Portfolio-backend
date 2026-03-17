@@ -340,3 +340,38 @@ resource "aws_s3_bucket_lifecycle_configuration" "access_logs" {
     }
   }
 }
+
+# -----------------------------------------------------------------------------
+# TEMPLATES BUCKET
+# -----------------------------------------------------------------------------
+# Static template preview HTML files. Served via CloudFront (/templates/*).
+# Written by scripts/generate_template_previews.py — never by any Lambda.
+
+resource "aws_s3_bucket" "templates" {
+  bucket = "${var.name_prefix}-templates-${var.random_suffix}"
+
+  tags = merge(var.tags, {
+    Name    = "${var.name_prefix}-templates"
+    Purpose = "Template preview HTML files served via CloudFront"
+  })
+}
+
+resource "aws_s3_bucket_server_side_encryption_configuration" "templates" {
+  bucket = aws_s3_bucket.templates.id
+
+  rule {
+    apply_server_side_encryption_by_default {
+      sse_algorithm = "AES256"
+    }
+    bucket_key_enabled = true
+  }
+}
+
+resource "aws_s3_bucket_public_access_block" "templates" {
+  bucket = aws_s3_bucket.templates.id
+
+  block_public_acls       = true
+  block_public_policy     = true
+  ignore_public_acls      = true
+  restrict_public_buckets = true
+}

@@ -4,28 +4,66 @@ Generates static HTML/CSS portfolio website from parsed resume data.
 Outputs to S3 portfolio bucket for CloudFront delivery.
 
 Security notes:
-  - All user-supplied strings are HTML-escaped before injection (XSS prevention)
+  - parsedData in DynamoDB uses PII tokens ({{NAME}}, {{EMAIL}}, etc.)
+    instead of real contact details. _get_pii() reads the dedicated
+    PII#latest item and _unmask_pii() substitutes tokens at render time.
+    SSN is always suppressed — never rendered in the portfolio HTML.
+  - ALL user-supplied strings are html.escaped before any template sees them
+    (_extract_vars() in templates/base.py). Prevents stored XSS regardless of
+    what OpenAI returns or what was in the resume text.
   - Link URLs validated to http/https only (javascript: injection prevention)
-  - Content-Security-Policy header added to generated pages (script-src 'none')
+  - CSP header added to every template: script-src 'none'
   - Arbitrary fields from AI output are never treated as raw HTML
+
+Templates:
+  Each template lives in templates/{name}.py and exposes:
+    html(v: dict) -> str   — renders full HTML page
+    css()         -> str   — returns stylesheet string
+  v is a pre-escaped dict produced by templates.base._extract_vars().
+  Adding a new template = add a .py file + register in VALID_TEMPLATE_IDS.
 """
 
-import html
+import importlib
 import json
 import os
 import re
+import uuid
 import boto3
 from datetime import datetime, timezone
 
+from templates.base import _extract_vars
+
 s3_client = boto3.client('s3')
+cloudfront_client = boto3.client('cloudfront')
 dynamodb = boto3.resource('dynamodb')
 
 PORTFOLIO_BUCKET = os.environ.get('PORTFOLIO_BUCKET')
-DYNAMODB_TABLE = os.environ.get('DYNAMODB_TABLE')
+MAIN_TABLE = os.environ.get('MAIN_TABLE')
+PII_TABLE = os.environ.get('PII_TABLE')
+CLOUDFRONT_DISTRIBUTION_ID = os.environ.get('CLOUDFRONT_DISTRIBUTION_ID', '')
 ENVIRONMENT = os.environ.get('ENVIRONMENT', 'dev')
+
+# Keep in sync with upload/handler.py and auth/patch_portfolio.py
+VALID_TEMPLATE_IDS = frozenset({
+    'modern', 'minimal', 'bold', 'creative', 'executive',
+    'nebula', 'aurora', 'luxury',
+})
+DEFAULT_TEMPLATE = 'modern'
 
 # Only allow http and https schemes in user-supplied URLs
 _ALLOWED_URL_RE = re.compile(r'^https?://', re.IGNORECASE)
+
+# PII tokens and the pii_map key they correspond to.
+# NAME is not masked — portfolio is public-facing; name is intentional.
+# SSN maps to None — stored for compliance but never rendered.
+_TOKEN_FIELD = {
+    '{{EMAIL}}':        'email',
+    '{{PHONE}}':        'phone',
+    '{{LINKEDIN_URL}}': 'linkedin_url',
+    '{{GITHUB_URL}}':   'github_url',
+    '{{SSN}}':          None,   # suppressed
+}
+
 
 # ---------------------------------------------------------------------------
 # Structured logger — outputs JSON, captured by CloudWatch Logs
@@ -50,15 +88,62 @@ def _log_error(message: str, **kwargs) -> None:
     _log("ERROR", message, **kwargs)
 
 
-def _safe_url(url: str) -> str:
+# ---------------------------------------------------------------------------
+# PII helpers
+# ---------------------------------------------------------------------------
+
+
+def _get_pii(user_id: str) -> dict:
     """
-    Return the URL only if it uses http or https.
-    Returns '' for javascript:, data:, vbscript:, or anything else.
-    Prevents XSS via href injection.
+    Read real PII values from the dedicated DynamoDB PII#latest item.
+    Returns an empty dict if not found (e.g. uploads pre-dating PII masking).
     """
-    if url and _ALLOWED_URL_RE.match(url.strip()):
-        return url.strip()
-    return ''
+    table = dynamodb.Table(PII_TABLE)
+    resp = table.get_item(
+        Key={
+            'PK': f'USER#{user_id}',
+            'SK': 'PII#latest',
+        }
+    )
+    return resp.get('Item', {})
+
+
+def _unmask_pii(data: dict, pii: dict) -> dict:
+    """
+    Recursively substitute {{TOKEN}} placeholders in a parsed-data dict
+    with real values from pii. SSN tokens are replaced with '' (suppressed).
+    Unknown tokens are left as-is so accidental content is not erased.
+    """
+    if not pii:
+        return data
+
+    def _sub(value: str) -> str:
+        for token, field in _TOKEN_FIELD.items():
+            if token in value:
+                real = pii.get(field, '') if field else ''
+                value = value.replace(token, real)
+        return value
+
+    result = {}
+    for k, v in data.items():
+        if isinstance(v, str):
+            result[k] = _sub(v)
+        elif isinstance(v, dict):
+            result[k] = _unmask_pii(v, pii)
+        elif isinstance(v, list):
+            result[k] = [
+                _unmask_pii(i, pii) if isinstance(i, dict)
+                else (_sub(i) if isinstance(i, str) else i)
+                for i in v
+            ]
+        else:
+            result[k] = v
+    return result
+
+
+# ---------------------------------------------------------------------------
+# Lambda handler
+# ---------------------------------------------------------------------------
 
 
 def lambda_handler(event, context):
@@ -66,7 +151,6 @@ def lambda_handler(event, context):
     correlation_id = context.aws_request_id if context else 'local'
     user_id = None
     try:
-        # Can be triggered by direct Lambda invocation or DynamoDB Stream
         user_id = event.get('userId')
         upload_id = event.get('uploadId')
 
@@ -86,8 +170,7 @@ def lambda_handler(event, context):
             uploadId=upload_id,
         )
 
-        # Get portfolio data from DynamoDB
-        table = dynamodb.Table(DYNAMODB_TABLE)
+        table = dynamodb.Table(MAIN_TABLE)
         response = table.get_item(
             Key={
                 'PK': f'USER#{user_id}',
@@ -106,12 +189,33 @@ def lambda_handler(event, context):
         item = response['Item']
         parsed_data = item.get('parsedData', {})
         portfolio_content = item.get('portfolioContent', {})
+        content_hash = item.get('contentHash', '')
 
-        # Generate HTML — all values HTML-escaped inside _generate_html
-        portfolio_html = _generate_html(parsed_data, portfolio_content)
-        css = _generate_css()
+        # Resolve templateId — default to 'modern' if missing or invalid
+        template_id = item.get('templateId', DEFAULT_TEMPLATE)
+        if template_id not in VALID_TEMPLATE_IDS:
+            _log_info(
+                "Unknown templateId — falling back to default",
+                correlationId=correlation_id,
+                userId=user_id,
+                templateId=template_id,
+                default=DEFAULT_TEMPLATE,
+            )
+            template_id = DEFAULT_TEMPLATE
 
-        # Upload to S3
+        # Unmask PII tokens — substitutes {{NAME}}, {{EMAIL}}, etc. with
+        # the real values stored in PII#latest. SSN is always suppressed.
+        pii = _get_pii(user_id)
+        parsed_data = _unmask_pii(parsed_data, pii)
+
+        # Extract and escape all user data into a safe dict for templates
+        template_vars = _extract_vars(parsed_data, portfolio_content)
+
+        # Load and render the selected template module
+        mod = importlib.import_module(f'templates.{template_id}')
+        portfolio_html = mod.html(template_vars)
+        css = mod.css()
+
         version = item.get('version', 1)
         base_path = f"{user_id}/v{version}"
 
@@ -120,7 +224,9 @@ def lambda_handler(event, context):
             Key=f"{base_path}/index.html",
             Body=portfolio_html.encode('utf-8'),
             ContentType='text/html',
-            CacheControl='max-age=3600',
+            # no-store: browsers never cache the HTML locally.
+            # CloudFront uses its own TTL but gets invalidated below on every publish.
+            CacheControl='no-store',
         )
 
         s3_client.put_object(
@@ -131,8 +237,44 @@ def lambda_handler(event, context):
             CacheControl='max-age=86400',
         )
 
-        # Update portfolio status in DynamoDB
+        # Invalidate CloudFront so edge caches immediately serve the new files.
+        # Skip gracefully if the distribution ID is not configured (local/test).
+        if CLOUDFRONT_DISTRIBUTION_ID:
+            try:
+                cloudfront_client.create_invalidation(
+                    DistributionId=CLOUDFRONT_DISTRIBUTION_ID,
+                    InvalidationBatch={
+                        'Paths': {
+                            'Quantity': 1,
+                            'Items': [f'/{base_path}/*'],
+                        },
+                        'CallerReference': str(uuid.uuid4()),
+                    },
+                )
+                _log_info(
+                    "CloudFront cache invalidated",
+                    correlationId=correlation_id,
+                    userId=user_id,
+                    path=base_path,
+                )
+            except Exception as cf_err:
+                # Non-fatal: log and continue. Portfolio is already in S3;
+                # users will see fresh content once the CF TTL expires.
+                _log_error(
+                    "CloudFront invalidation failed",
+                    correlationId=correlation_id,
+                    userId=user_id,
+                    error=str(cf_err),
+                )
+        else:
+            _log_info(
+                "CLOUDFRONT_DISTRIBUTION_ID not set — skipping invalidation",
+                correlationId=correlation_id,
+                userId=user_id,
+            )
+
         now = datetime.now(timezone.utc).isoformat()
+
         table.update_item(
             Key={
                 'PK': f'USER#{user_id}',
@@ -168,12 +310,25 @@ def lambda_handler(event, context):
                 },
             )
 
+        # Back-fill portfolioPath in the dedup record so future identical
+        # uploads can short-circuit directly to the published portfolio.
+        if content_hash:
+            table.update_item(
+                Key={
+                    'PK': f'USER#{user_id}',
+                    'SK': f'CONTENT#{content_hash}',
+                },
+                UpdateExpression='SET portfolioPath = :path',
+                ExpressionAttributeValues={':path': base_path},
+            )
+
         _log_info(
             "Portfolio published",
             correlationId=correlation_id,
             userId=user_id,
             uploadId=upload_id,
             portfolioPath=base_path,
+            templateId=template_id,
         )
         return {
             'statusCode': 200,
@@ -188,278 +343,3 @@ def lambda_handler(event, context):
             error=str(e),
         )
         raise
-
-
-def _generate_html(parsed_data: dict, portfolio_content: dict) -> str:
-    """
-    Generate portfolio HTML.
-
-    EVERY value from parsed_data / portfolio_content is passed through
-    html.escape() before interpolation — prevents stored XSS regardless
-    of what OpenAI returns or what was in the resume text.
-    """
-    # --- Escape all scalar strings ---
-    name = html.escape(str(parsed_data.get('name') or 'Portfolio'))
-    title = html.escape(str(parsed_data.get('title') or ''))
-    headline = html.escape(
-        str(portfolio_content.get('headline') or title)
-    )
-    bio = html.escape(
-        str(portfolio_content.get('bio')
-            or parsed_data.get('summary') or '')
-    )
-    email = html.escape(str(parsed_data.get('email') or ''))
-    location = html.escape(str(parsed_data.get('location') or ''))
-    skills = [
-        html.escape(str(s))
-        for s in (parsed_data.get('skills') or [])
-    ]
-    experience = parsed_data.get('experience') or []
-    education = parsed_data.get('education') or []
-    links = parsed_data.get('links') or {}
-
-    # --- Experience section ---
-    experience_html = ""
-    for exp in experience[:5]:
-        exp_title = html.escape(str(exp.get('title') or ''))
-        company = html.escape(str(exp.get('company') or ''))
-        duration = html.escape(str(exp.get('duration') or ''))
-        description = html.escape(str(exp.get('description') or ''))
-        highlights_html = "".join(
-            f"<li>{html.escape(str(h))}</li>"
-            for h in (exp.get('highlights') or [])[:3]
-        )
-        experience_html += (
-            f'<div class="experience-item">'
-            f'<h3>{exp_title} at {company}</h3>'
-            f'<p class="duration">{duration}</p>'
-            f'<p>{description}</p>'
-            f'<ul>{highlights_html}</ul>'
-            f'</div>'
-        )
-
-    # --- Education section ---
-    education_html = ""
-    for edu in education[:3]:
-        degree = html.escape(str(edu.get('degree') or ''))
-        field = html.escape(str(edu.get('field') or ''))
-        institution = html.escape(str(edu.get('institution') or ''))
-        year = html.escape(str(edu.get('year') or ''))
-        education_html += (
-            f'<div class="education-item">'
-            f'<h3>{degree} in {field}</h3>'
-            f'<p>{institution} - {year}</p>'
-            f'</div>'
-        )
-
-    # --- Skills ---
-    skills_html = "".join(
-        f'<span class="skill-tag">{skill}</span>'
-        for skill in skills[:15]
-    )
-
-    # --- Links: validate scheme BEFORE escaping into href ---
-    # _safe_url() rejects javascript:, data:, vbscript:, etc.
-    links_html = ""
-    linkedin_url = _safe_url(str(links.get('linkedin') or ''))
-    github_url = _safe_url(str(links.get('github') or ''))
-
-    if linkedin_url:
-        links_html += (
-            f'<a href="{html.escape(linkedin_url)}" '
-            f'target="_blank" rel="noopener noreferrer">LinkedIn</a>'
-        )
-    if github_url:
-        links_html += (
-            f'<a href="{html.escape(github_url)}" '
-            f'target="_blank" rel="noopener noreferrer">GitHub</a>'
-        )
-
-    email_link = ""
-    if email:
-        email_link = f'<a href="mailto:{email}">Contact</a>'
-
-    # Content-Security-Policy: script-src 'none' ensures no inline or
-    # external scripts can run even if XSS were somehow injected.
-    csp = (
-        "default-src 'self'; "
-        "style-src 'self' https://fonts.googleapis.com; "
-        "font-src https://fonts.gstatic.com; "
-        "script-src 'none'; "
-        "object-src 'none';"
-    )
-
-    return f"""<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta http-equiv="Content-Security-Policy" content="{csp}">
-    <title>{name} - Portfolio</title>
-    <link rel="stylesheet" href="styles.css">
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-</head>
-<body>
-    <header class="hero">
-        <div class="container">
-            <h1>{name}</h1>
-            <p class="headline">{headline}</p>
-            <p class="location">{location}</p>
-            <div class="links">
-                {links_html}
-                {email_link}
-            </div>
-        </div>
-    </header>
-
-    <main class="container">
-        <section class="about">
-            <h2>About</h2>
-            <p>{bio}</p>
-        </section>
-
-        <section class="skills">
-            <h2>Skills</h2>
-            <div class="skills-container">
-                {skills_html}
-            </div>
-        </section>
-
-        <section class="experience">
-            <h2>Experience</h2>
-            {experience_html}
-        </section>
-
-        <section class="education">
-            <h2>Education</h2>
-            {education_html}
-        </section>
-    </main>
-
-    <footer>
-        <div class="container">
-            <p>Generated with AI Portfolio Builder</p>
-        </div>
-    </footer>
-</body>
-</html>"""
-
-
-def _generate_css() -> str:
-    """Generate portfolio CSS."""
-    return """
-:root {
-    --primary: #2563eb;
-    --primary-dark: #1d4ed8;
-    --text: #1f2937;
-    --text-light: #6b7280;
-    --bg: #ffffff;
-    --bg-alt: #f9fafb;
-    --border: #e5e7eb;
-}
-
-* { margin: 0; padding: 0; box-sizing: border-box; }
-
-body {
-    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-    line-height: 1.6;
-    color: var(--text);
-    background: var(--bg);
-}
-
-.container { max-width: 800px; margin: 0 auto; padding: 0 1.5rem; }
-
-.hero {
-    background: linear-gradient(
-        135deg, var(--primary) 0%, var(--primary-dark) 100%
-    );
-    color: white;
-    padding: 4rem 0;
-    text-align: center;
-}
-
-.hero h1 { font-size: 2.5rem; font-weight: 700; margin-bottom: 0.5rem; }
-.headline { font-size: 1.25rem; opacity: 0.9; margin-bottom: 0.5rem; }
-.location { opacity: 0.8; margin-bottom: 1.5rem; }
-
-.links {
-    display: flex;
-    gap: 1rem;
-    justify-content: center;
-    flex-wrap: wrap;
-}
-
-.links a {
-    color: white;
-    text-decoration: none;
-    padding: 0.5rem 1rem;
-    border: 1px solid rgba(255,255,255,0.3);
-    border-radius: 6px;
-    transition: all 0.2s;
-}
-
-.links a:hover {
-    background: rgba(255,255,255,0.1);
-    border-color: rgba(255,255,255,0.5);
-}
-
-main { padding: 3rem 0; }
-section { margin-bottom: 3rem; }
-
-h2 {
-    font-size: 1.5rem;
-    font-weight: 600;
-    margin-bottom: 1.5rem;
-    padding-bottom: 0.5rem;
-    border-bottom: 2px solid var(--primary);
-}
-
-.about p { font-size: 1.1rem; color: var(--text-light); }
-.skills-container { display: flex; flex-wrap: wrap; gap: 0.5rem; }
-
-.skill-tag {
-    background: var(--bg-alt);
-    color: var(--text);
-    padding: 0.5rem 1rem;
-    border-radius: 20px;
-    font-size: 0.9rem;
-    border: 1px solid var(--border);
-}
-
-.experience-item, .education-item {
-    margin-bottom: 2rem;
-    padding-bottom: 2rem;
-    border-bottom: 1px solid var(--border);
-}
-
-.experience-item:last-child, .education-item:last-child {
-    border-bottom: none;
-    margin-bottom: 0;
-    padding-bottom: 0;
-}
-
-.experience-item h3, .education-item h3 {
-    font-size: 1.1rem;
-    font-weight: 600;
-    margin-bottom: 0.25rem;
-}
-
-.duration { color: var(--text-light); font-size: 0.9rem; margin-bottom: 0.5rem; }
-.experience-item ul { margin-top: 0.5rem; padding-left: 1.5rem; }
-.experience-item li { margin-bottom: 0.25rem; color: var(--text-light); }
-
-footer {
-    background: var(--bg-alt);
-    padding: 2rem 0;
-    text-align: center;
-    color: var(--text-light);
-    font-size: 0.9rem;
-    border-top: 1px solid var(--border);
-}
-
-@media (max-width: 640px) {
-    .hero h1 { font-size: 2rem; }
-    .headline { font-size: 1.1rem; }
-    h2 { font-size: 1.25rem; }
-}
-"""

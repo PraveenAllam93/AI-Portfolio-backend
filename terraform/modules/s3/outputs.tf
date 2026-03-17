@@ -93,3 +93,24 @@ output "access_logs_bucket_domain" {
     aws_s3_bucket_public_access_block.access_logs,
   ]
 }
+
+# Templates bucket
+output "templates_bucket_name" {
+  description = "Name of the templates bucket"
+  value       = aws_s3_bucket.templates.bucket
+}
+
+output "templates_bucket_arn" {
+  description = "ARN of the templates bucket"
+  value       = aws_s3_bucket.templates.arn
+}
+
+output "templates_bucket_id" {
+  description = "ID of the templates bucket"
+  value       = aws_s3_bucket.templates.id
+}
+
+output "templates_bucket_domain" {
+  description = "Regional domain name of the templates bucket"
+  value       = aws_s3_bucket.templates.bucket_regional_domain_name
+}

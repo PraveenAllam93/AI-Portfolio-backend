@@ -246,3 +246,4 @@ src/lambdas/*/typing_extensions*
 learnings/
 scripts/
 docs/
+tests/

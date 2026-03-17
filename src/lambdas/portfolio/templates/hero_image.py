@@ -1,20 +1,17 @@
 """
-Template: Nebula (v2 Premium Cyberpunk)
+Template: HeroImage
 
-Upgrades:
-- Wider layout
-- Controlled hero width
-- Premium spacing
+Features:
+- Large hero section
+- Optional profile image
+- Fade animations
+- Premium layout
+- Modern aesthetic
+
+Image hides automatically if empty.
 """
 
-from .base import CSP
-
-
-_FONTS = (
-    "https://fonts.googleapis.com/css2"
-    "?family=Space+Grotesk:wght@300;400;500;600;700"
-    "&family=Inter:wght@300;400;500&display=swap"
-)
+from .base import CSP, FONTS_URL
 
 
 def html(v: dict) -> str:
@@ -25,8 +22,10 @@ def html(v: dict) -> str:
     experience_html = _experience(v["experience"])
     education_html = _education(v["education"])
 
-    location_html = (
-        f'<p class="hero-location">{v["location"]}</p>' if v["location"] else ""
+    image_html = (
+        f'<img class="hero-image" src="{v["profile_image"]}">'
+        if v.get("profile_image")
+        else ""
     )
 
     return f"""<!DOCTYPE html>
@@ -35,19 +34,14 @@ def html(v: dict) -> str:
 <head>
 
 <meta charset="UTF-8">
-
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width">
 
 <meta http-equiv="Content-Security-Policy" content="{CSP}">
 
 <title>{v["name"]} Portfolio</title>
 
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-
-<link href="{_FONTS}" rel="stylesheet">
-
 <link rel="stylesheet" href="styles.css">
+<link href="{FONTS_URL}" rel="stylesheet">
 
 </head>
 
@@ -55,73 +49,38 @@ def html(v: dict) -> str:
 <body>
 
 
-<div class="bg-grid"></div>
-
-<div class="orb orb-a"></div>
-
-<div class="orb orb-b"></div>
-
-
-
 <header class="hero">
 
-<div class="container hero-inner">
+<div class="container hero-grid">
 
 
+<div class="hero-text">
 
-<div class="eyebrow">
+<h1>{v["name"]}</h1>
 
-<span class="eyebrow-dot"></span>
+<p class="headline">{v["headline"]}</p>
 
-Portfolio
-
-<span class="eyebrow-dot"></span>
-
-</div>
+<p class="location">{v["location"]}</p>
 
 
-
-<p class="hero-greeting">
-
-Hello I'm
-
-</p>
-
-
-
-<h1 class="hero-name">
-
-{v["name"]}
-
-</h1>
-
-
-
-<p class="hero-headline">
-
-{v["headline"]}
-
-</p>
-
-
-
-{location_html}
-
-
-
-<div class="hero-links">
+<div class="links">
 
 {links_html}
-
 {email_link}
 
 </div>
 
+</div>
+
+
+<div class="hero-image-wrapper">
+
+{image_html}
 
 </div>
 
 
-<div class="hero-shimmer"></div>
+</div>
 
 
 </header>
@@ -131,18 +90,13 @@ Hello I'm
 <main class="container">
 
 
-
 <div class="section-grid">
 
 <section>
 
 <h2>About</h2>
 
-<p class="bio">
-
-{v["bio"]}
-
-</p>
+<p class="bio">{v["bio"]}</p>
 
 </section>
 
@@ -152,7 +106,7 @@ Hello I'm
 
 <h2>Skills</h2>
 
-<div class="skills-grid">
+<div class="skills-container">
 
 {skills_html}
 
@@ -183,7 +137,6 @@ Hello I'm
 </section>
 
 
-
 </main>
 
 
@@ -210,30 +163,26 @@ def css() -> str:
 
 :root{
 
---p:#a855f7;
---c:#22d3ee;
+--primary:#6366f1;
 
---bg:#07070f;
+--text:#1f2937;
 
---text:#e2e8f0;
---muted:#94a3b8;
+--muted:#6b7280;
 
---card:rgba(255,255,255,.03);
+--bg:#ffffff;
 
---border:rgba(168,85,247,.2);
+--bg-alt:#f9fafb;
+
+--border:#e5e7eb;
 
 }
 
 
 
-/* Reset */
-
 *{
-
 margin:0;
 padding:0;
 box-sizing:border-box;
-
 }
 
 
@@ -266,115 +215,73 @@ padding:0 2rem;
 
 
 
-/* Grid */
-
-.bg-grid{
-
-position:fixed;
-
-inset:0;
-
-background-image:
-
-linear-gradient(rgba(168,85,247,.04) 1px,transparent 1px),
-
-linear-gradient(90deg,rgba(168,85,247,.04) 1px,transparent 1px);
-
-background-size:64px 64px;
-
-}
-
-
-
-/* Orbs */
-
-.orb{
-
-position:fixed;
-
-border-radius:50%;
-
-filter:blur(90px);
-
-}
-
-
-
-.orb-a{
-
-width:500px;
-height:500px;
-
-background:rgba(168,85,247,.15);
-
-top:-150px;
-left:-150px;
-
-}
-
-
-
-.orb-b{
-
-width:400px;
-height:400px;
-
-background:rgba(34,211,238,.12);
-
-bottom:-150px;
-right:-150px;
-
-}
-
-
-
 /* Hero */
 
 .hero{
 
-padding:6rem 0 4rem;
+background:linear-gradient(135deg,#6366f1,#4f46e5);
+
+color:white;
+
+padding:6rem 0;
 
 }
 
 
 
-.hero-inner{
+.hero-grid{
 
-max-width:700px;
+display:grid;
+
+grid-template-columns:1fr 320px;
+
+gap:60px;
+
+align-items:center;
 
 }
 
 
 
-.hero-name{
+.hero-text h1{
 
-font-family:'Space Grotesk';
-
-font-size:clamp(2.8rem,6vw,4.5rem);
-
-background:linear-gradient(135deg,var(--p),var(--c));
-
--webkit-background-clip:text;
-
--webkit-text-fill-color:transparent;
+font-size:clamp(3rem,6vw,4.5rem);
 
 margin-bottom:10px;
 
+animation:fadeUp .8s ease;
+
 }
 
 
 
-.hero-headline{
+.headline{
 
-color:var(--muted);
+font-size:1.3rem;
+
+margin-bottom:10px;
+
+opacity:.9;
+
+animation:fadeUp .9s ease;
+
+}
+
+
+
+.location{
+
+opacity:.7;
 
 margin-bottom:20px;
 
+animation:fadeUp 1s ease;
+
 }
 
 
 
-.hero-links{
+.links{
 
 display:flex;
 
@@ -382,13 +289,15 @@ gap:10px;
 
 flex-wrap:wrap;
 
+animation:fadeUp 1.1s ease;
+
 }
 
 
 
-.hero-links a{
+.links a{
 
-border:1px solid var(--border);
+border:1px solid rgba(255,255,255,.4);
 
 padding:8px 16px;
 
@@ -396,7 +305,37 @@ border-radius:6px;
 
 text-decoration:none;
 
-color:var(--text);
+color:white;
+
+}
+
+
+
+/* Image */
+
+.hero-image-wrapper{
+
+display:flex;
+
+justify-content:center;
+
+}
+
+
+
+.hero-image{
+
+width:280px;
+
+height:280px;
+
+object-fit:cover;
+
+border-radius:20px;
+
+box-shadow:0 20px 60px rgba(0,0,0,.25);
+
+animation:fadeUp 1.2s ease;
 
 }
 
@@ -424,17 +363,21 @@ h2{
 
 margin-bottom:1.5rem;
 
+font-size:1.4rem;
+
+border-bottom:2px solid var(--primary);
+
+padding-bottom:6px;
+
 }
 
 
-
-/* Bio */
 
 .bio{
 
 max-width:700px;
 
-color:var(--muted);
+color:#374151;
 
 }
 
@@ -442,7 +385,7 @@ color:var(--muted);
 
 /* Skills */
 
-.skills-grid{
+.skills-container{
 
 display:flex;
 
@@ -456,11 +399,13 @@ gap:8px;
 
 .skill-tag{
 
-border:1px solid var(--border);
+background:var(--bg-alt);
 
 padding:6px 12px;
 
 border-radius:20px;
+
+border:1px solid var(--border);
 
 }
 
@@ -468,9 +413,10 @@ border-radius:20px;
 
 /* Cards */
 
-.card{
+.experience-item,
+.education-item{
 
-background:var(--card);
+background:var(--bg-alt);
 
 padding:1.5rem;
 
@@ -478,11 +424,11 @@ border-radius:10px;
 
 margin-bottom:1rem;
 
-border-left:3px solid var(--p);
-
 }
 
 
+
+/* Footer */
 
 footer{
 
@@ -496,13 +442,42 @@ color:var(--muted);
 
 
 
+/* Animations */
+
+@keyframes fadeUp{
+
+from{
+opacity:0;
+transform:translateY(30px);
+}
+
+to{
+opacity:1;
+transform:translateY(0);
+}
+
+}
+
+
+
 /* Mobile */
 
-@media(max-width:800px){
+@media(max-width:900px){
 
-.hero{
+.hero-grid{
 
-padding:4rem 0;
+grid-template-columns:1fr;
+
+text-align:center;
+
+}
+
+.hero-image{
+
+width:200px;
+height:200px;
+
+margin-top:20px;
 
 }
 
@@ -569,7 +544,7 @@ def _experience(items: list) -> str:
         highlights = "".join(f"<li>{h}</li>" for h in exp["highlights"])
 
         out += (
-            f'<div class="card">'
+            f'<div class="experience-item">'
             f"<b>{exp['title']}</b><br>"
             f"{exp['company']}<br>"
             f"<small>{exp['duration']}</small>"
@@ -587,7 +562,7 @@ def _education(items: list) -> str:
 
     for edu in items:
         out += (
-            f'<div class="card">'
+            f'<div class="education-item">'
             f"{edu['degree']} {edu['field']}<br>"
             f"{edu['institution']} {edu['year']}"
             f"</div>"

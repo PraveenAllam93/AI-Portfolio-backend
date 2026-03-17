@@ -67,14 +67,41 @@ variable "portfolio_bucket_name" {
   type        = string
 }
 
-# DynamoDB
+# DynamoDB — main table (pipeline records)
 variable "dynamodb_table_arn" {
-  description = "ARN of the DynamoDB table"
+  description = "ARN of the main DynamoDB table"
   type        = string
 }
 
 variable "dynamodb_table_name" {
-  description = "Name of the DynamoDB table"
+  description = "Name of the main DynamoDB table"
+  type        = string
+}
+
+# DynamoDB — PII table
+variable "pii_table_arn" {
+  description = "ARN of the PII DynamoDB table"
+  type        = string
+}
+
+variable "pii_table_name" {
+  description = "Name of the PII DynamoDB table"
+  type        = string
+}
+
+variable "pii_kms_key_arn" {
+  description = "ARN of the KMS key encrypting the PII table"
+  type        = string
+}
+
+# DynamoDB — analytics table
+variable "analytics_table_arn" {
+  description = "ARN of the analytics DynamoDB table"
+  type        = string
+}
+
+variable "analytics_table_name" {
+  description = "Name of the analytics DynamoDB table"
   type        = string
 }
 
@@ -143,6 +170,19 @@ variable "access_logs_bucket_arn" {
 variable "access_logs_bucket_name" {
   description = "Name of the CloudFront access logs S3 bucket"
   type        = string
+}
+
+# CloudFront — distribution ID for cache invalidation after portfolio publish
+variable "cloudfront_distribution_id" {
+  description = "ID of the CloudFront distribution serving portfolio files"
+  type        = string
+  default     = ""
+}
+
+variable "cloudfront_distribution_arn" {
+  description = "ARN of the CloudFront distribution (for IAM scoping)"
+  type        = string
+  default     = ""
 }
 
 # CORS

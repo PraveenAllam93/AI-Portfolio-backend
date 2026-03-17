@@ -10,6 +10,7 @@ Validation Layers (Fail Fast):
 5. Resume semantic validation (basic)
 """
 
+import hashlib
 import io
 import json
 import os
@@ -24,7 +25,7 @@ dynamodb = boto3.resource('dynamodb')
 QUARANTINE_BUCKET = os.environ.get('QUARANTINE_BUCKET')
 VALIDATED_BUCKET = os.environ.get('VALIDATED_BUCKET')
 REJECTED_BUCKET = os.environ.get('REJECTED_BUCKET')
-DYNAMODB_TABLE = os.environ.get('DYNAMODB_TABLE')
+MAIN_TABLE = os.environ.get('MAIN_TABLE')
 MAX_FILE_SIZE_MB = int(os.environ.get('MAX_FILE_SIZE_MB', 10))
 ALLOWED_EXTENSIONS = os.environ.get(
     'ALLOWED_EXTENSIONS', '.pdf,.docx'
@@ -156,8 +157,17 @@ def lambda_handler(event, context):
                     user_id, upload_id, correlation_id,
                 )
 
-        # --- All validations passed: promote to validated bucket ---
-        validated_key = f"{user_id}/resume{ext}"
+        # --- All validations passed: compute content hash and promote ---
+        # Read full file if not already read (PDF path skipped the full read)
+        if ext == '.pdf':
+            file_resp = s3_client.get_object(Bucket=bucket, Key=key)
+            file_content = file_resp['Body'].read()
+
+        content_hash = hashlib.sha256(file_content).hexdigest()
+
+        # Store under {userId}/{uploadId}/{sha256_hash}.{ext} so each upload
+        # is isolated and the hash can be used for deduplication downstream.
+        validated_key = f"{user_id}/{upload_id}/{content_hash}{ext}"
 
         s3_client.copy_object(
             Bucket=VALIDATED_BUCKET,
@@ -167,6 +177,7 @@ def lambda_handler(event, context):
                 'validated': 'true',
                 'originalKey': key,
                 'uploadId': upload_id,
+                'contentHash': content_hash,
             },
             MetadataDirective='REPLACE',
         )
@@ -176,6 +187,7 @@ def lambda_handler(event, context):
         _update_status(user_id, upload_id, 'VALIDATED', {
             'validatedKey': validated_key,
             'validatedBucket': VALIDATED_BUCKET,
+            'contentHash': content_hash,
         })
 
         _log_info(
@@ -184,6 +196,7 @@ def lambda_handler(event, context):
             userId=user_id,
             uploadId=upload_id,
             validatedKey=validated_key,
+            contentHash=content_hash[:16],  # log prefix only, not full hash
         )
         return {'statusCode': 200, 'body': 'Validation successful'}
 
@@ -295,7 +308,7 @@ def _reject(
 
 def _update_status(user_id, upload_id, status, extra_data=None):
     """Update upload status in DynamoDB."""
-    table = dynamodb.Table(DYNAMODB_TABLE)
+    table = dynamodb.Table(MAIN_TABLE)
 
     update_expr = (
         "SET #status = :status, updatedAt = :updatedAt, GSI1PK = :gsi1pk"

@@ -1,11 +1,19 @@
 """
 Lambda: Resume Ingestion
 Triggered when a file is promoted to the validated bucket.
-Extracts text from the resume and pushes a job to SQS for AI processing.
+Extracts text from the resume, writes it to S3, and pushes a lightweight
+job reference to SQS for AI processing.
 
 Security notes:
-  - upload_id is read from S3 metadata (stamped by quarantine validator).
-    If missing, the item is rejected — no silent fallback to 'unknown'.
+  - Raw resume text is NEVER placed in the SQS message body — SQS has a
+    256 KB limit and the message is visible in CloudWatch/DLQ traces. Text
+    is written to the validated S3 bucket and referenced by key only.
+  - upload_id and content_hash are read from S3 metadata (stamped by the
+    quarantine validator). Missing metadata causes a loud rejection — no
+    silent fallback.
+  - Deduplication: if the same user uploads identical file content (same
+    SHA-256 hash), AI processing is skipped and the existing portfolio is
+    re-linked. This prevents redundant OpenAI spend on identical resumes.
   - Raw resume text is NOT stored in DynamoDB to avoid PII accumulation.
     Only text length is recorded for observability.
   - Structured JSON logging with correlation ID for every entry.
@@ -22,7 +30,7 @@ sqs_client = boto3.client('sqs')
 dynamodb = boto3.resource('dynamodb')
 
 VALIDATED_BUCKET = os.environ.get('VALIDATED_BUCKET')
-DYNAMODB_TABLE = os.environ.get('DYNAMODB_TABLE')
+MAIN_TABLE = os.environ.get('MAIN_TABLE')
 PROCESSING_QUEUE = os.environ.get('PROCESSING_QUEUE')
 
 # ---------------------------------------------------------------------------
@@ -53,7 +61,7 @@ def _log_error(message: str, **kwargs) -> None:
 
 
 def lambda_handler(event, context):
-    """Extract text from validated resume and queue for AI processing."""
+    """Extract text from validated resume, store in S3, and queue for AI."""
     correlation_id = context.aws_request_id if context else 'local'
     try:
         record = event['Records'][0]
@@ -67,9 +75,10 @@ def lambda_handler(event, context):
             key=key,
         )
 
-        # Parse key: {user_id}/resume.{ext}
+        # Key format (set by quarantine validator):
+        #   {userId}/{uploadId}/{sha256_hash}.{ext}
         parts = key.split('/')
-        if len(parts) < 2:
+        if len(parts) < 3:
             _log_warning(
                 "Unexpected S3 key format — skipping",
                 correlationId=correlation_id,
@@ -78,16 +87,27 @@ def lambda_handler(event, context):
             return {'statusCode': 400, 'body': 'Invalid key format'}
 
         user_id = parts[0]
-        filename = parts[1]
+        upload_id = parts[1]
+        filename = parts[2]
         ext = os.path.splitext(filename)[1].lower()
 
-        # Read upload_id from S3 metadata stamped by the quarantine validator.
-        # Without this we cannot update the correct DynamoDB record — fail
-        # loudly rather than silently writing to SK: UPLOAD#unknown.
-        head = s3_client.head_object(Bucket=bucket, Key=key)
-        upload_id = head.get('Metadata', {}).get('uploadid')
+        # Ignore the resume-text.txt file that we write ourselves below —
+        # the validated bucket trigger fires for ALL object creates.
+        if filename == 'resume-text.txt':
+            _log_info(
+                "Skipping resume-text.txt trigger",
+                correlationId=correlation_id,
+                key=key,
+            )
+            return {'statusCode': 200, 'body': 'Skipped text file trigger'}
 
-        if not upload_id:
+        # Read metadata stamped by the quarantine validator.
+        head = s3_client.head_object(Bucket=bucket, Key=key)
+        metadata = head.get('Metadata', {})
+        upload_id_meta = metadata.get('uploadid')
+        content_hash = metadata.get('contenthash')  # S3 lowercases keys
+
+        if not upload_id_meta:
             _log_warning(
                 "Missing uploadId in S3 metadata — rejecting",
                 correlationId=correlation_id,
@@ -96,8 +116,41 @@ def lambda_handler(event, context):
             )
             return {'statusCode': 400, 'body': 'Missing uploadId metadata'}
 
+        if not content_hash:
+            _log_warning(
+                "Missing contentHash in S3 metadata — rejecting",
+                correlationId=correlation_id,
+                userId=user_id,
+                uploadId=upload_id,
+                key=key,
+            )
+            return {'statusCode': 400, 'body': 'Missing contentHash metadata'}
+
         _update_status(user_id, upload_id, 'EXTRACTING_TEXT')
 
+        # --- Deduplication check ---
+        # If this user already processed an identical resume (same content
+        # hash), skip AI and re-link the existing portfolio.
+        existing = _check_content_dedup(user_id, content_hash)
+        if existing:
+            _log_info(
+                "Duplicate resume content — reusing existing portfolio",
+                correlationId=correlation_id,
+                userId=user_id,
+                uploadId=upload_id,
+                existingUploadId=existing.get('uploadId'),
+            )
+            _update_status(user_id, upload_id, 'COMPLETE', {
+                'deduplicated': True,
+                'sourceUploadId': existing.get('uploadId', ''),
+                'portfolioPath': existing.get('portfolioPath', ''),
+            })
+            return {
+                'statusCode': 200,
+                'body': 'Deduplicated — reused existing portfolio',
+            }
+
+        # --- Text extraction ---
         response = s3_client.get_object(Bucket=bucket, Key=key)
         file_content = response['Body'].read()
 
@@ -125,22 +178,38 @@ def lambda_handler(event, context):
 
         text_length = len(text)
 
+        # --- Write extracted text to S3 ---
+        # Keeps SQS messages small and avoids exposing resume content in
+        # queue traces, DLQ messages, or CloudWatch log snippets.
+        # Path mirrors the resume: {userId}/{uploadId}/resume-text.txt
+        s3_text_key = f"{user_id}/{upload_id}/resume-text.txt"
+        s3_client.put_object(
+            Bucket=VALIDATED_BUCKET,
+            Key=s3_text_key,
+            Body=text.encode('utf-8'),
+            ContentType='text/plain; charset=utf-8',
+        )
+
         # Record text extraction — length only, NOT the text itself.
-        # Storing resume text in the upload record would accumulate PII
-        # unnecessarily; the text is already on S3 (encrypted) and passed
-        # via SQS (encrypted, short-lived) to the AI Lambda.
         _update_status(user_id, upload_id, 'QUEUED_FOR_AI', {
             'rawTextLength': text_length,
+            'contentHash': content_hash,
         })
 
+        # Read the templateId chosen at upload time.
+        # Falls back to 'modern' if the field is absent (old uploads).
+        template_id = _get_template_id(user_id, upload_id)
+
+        # SQS message carries only S3 key references — no raw resume text.
         sqs_client.send_message(
             QueueUrl=PROCESSING_QUEUE,
             MessageBody=json.dumps({
                 'userId': user_id,
                 'uploadId': upload_id,
-                'resumeText': text,
+                's3TextKey': s3_text_key,
+                'contentHash': content_hash,
+                'templateId': template_id,
                 'filename': filename,
-                's3Key': key,
                 'timestamp': datetime.now(timezone.utc).isoformat(),
             }),
             MessageAttributes={
@@ -161,6 +230,7 @@ def lambda_handler(event, context):
             userId=user_id,
             uploadId=upload_id,
             textLength=text_length,
+            s3TextKey=s3_text_key,
         )
         return {'statusCode': 200, 'body': 'Queued for processing'}
 
@@ -171,6 +241,41 @@ def lambda_handler(event, context):
             error=str(e),
         )
         raise
+
+
+def _get_template_id(user_id: str, upload_id: str) -> str:
+    """
+    Read the templateId chosen at upload time from the UPLOAD DynamoDB record.
+    Falls back to 'modern' if the field is absent (pre-template uploads).
+    """
+    table = dynamodb.Table(MAIN_TABLE)
+    resp = table.get_item(
+        Key={
+            'PK': f'USER#{user_id}',
+            'SK': f'UPLOAD#{upload_id}',
+        },
+        ProjectionExpression='templateId',
+    )
+    return resp.get('Item', {}).get('templateId', 'modern')
+
+
+def _check_content_dedup(user_id: str, content_hash: str) -> dict | None:
+    """
+    Check if this user has already processed a resume with this content hash.
+    Returns the existing record dict (with uploadId, portfolioPath) if found,
+    or None if this is new content.
+
+    DynamoDB record: PK=USER#{userId}, SK=CONTENT#{hash}
+    """
+    table = dynamodb.Table(MAIN_TABLE)
+    resp = table.get_item(
+        Key={
+            'PK': f'USER#{user_id}',
+            'SK': f'CONTENT#{content_hash}',
+        },
+        ProjectionExpression='uploadId, portfolioPath',
+    )
+    return resp.get('Item')
 
 
 def _extract_pdf_text(content: bytes, correlation_id: str) -> str:
@@ -224,7 +329,7 @@ def _extract_docx_text(content: bytes, correlation_id: str) -> str:
 
 def _update_status(user_id, upload_id, status, extra_data=None):
     """Update upload status in DynamoDB."""
-    table = dynamodb.Table(DYNAMODB_TABLE)
+    table = dynamodb.Table(MAIN_TABLE)
 
     update_expr = (
         "SET #status = :status, #updatedAt = :updatedAt, #gsi1pk = :gsi1pk"

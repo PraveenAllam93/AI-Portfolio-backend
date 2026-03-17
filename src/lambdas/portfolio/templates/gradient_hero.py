@@ -1,20 +1,20 @@
 """
-Template: Nebula (v2 Premium Cyberpunk)
+Template: GradientHero
 
-Upgrades:
-- Wider layout
-- Controlled hero width
-- Premium spacing
+Very aesthetic premium template.
+
+Features:
+- Large gradient hero
+- Animated gradient background
+- Huge gradient name text
+- Optional profile image
+- Fade animations
+- Premium layout
+
+Image hides automatically if empty.
 """
 
-from .base import CSP
-
-
-_FONTS = (
-    "https://fonts.googleapis.com/css2"
-    "?family=Space+Grotesk:wght@300;400;500;600;700"
-    "&family=Inter:wght@300;400;500&display=swap"
-)
+from .base import CSP, FONTS_URL
 
 
 def html(v: dict) -> str:
@@ -25,8 +25,10 @@ def html(v: dict) -> str:
     experience_html = _experience(v["experience"])
     education_html = _education(v["education"])
 
-    location_html = (
-        f'<p class="hero-location">{v["location"]}</p>' if v["location"] else ""
+    image_html = (
+        f'<img class="hero-image" src="{v["profile_image"]}">'
+        if v.get("profile_image")
+        else ""
     )
 
     return f"""<!DOCTYPE html>
@@ -36,18 +38,15 @@ def html(v: dict) -> str:
 
 <meta charset="UTF-8">
 
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width">
 
 <meta http-equiv="Content-Security-Policy" content="{CSP}">
 
 <title>{v["name"]} Portfolio</title>
 
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-
-<link href="{_FONTS}" rel="stylesheet">
-
 <link rel="stylesheet" href="styles.css">
+
+<link href="{FONTS_URL}" rel="stylesheet">
 
 </head>
 
@@ -55,76 +54,47 @@ def html(v: dict) -> str:
 <body>
 
 
-<div class="bg-grid"></div>
-
-<div class="orb orb-a"></div>
-
-<div class="orb orb-b"></div>
-
-
 
 <header class="hero">
+
 
 <div class="container hero-inner">
 
 
-
-<div class="eyebrow">
-
-<span class="eyebrow-dot"></span>
-
-Portfolio
-
-<span class="eyebrow-dot"></span>
-
-</div>
+{image_html}
 
 
+<h1>{v["name"]}</h1>
 
-<p class="hero-greeting">
-
-Hello I'm
-
-</p>
-
-
-
-<h1 class="hero-name">
-
-{v["name"]}
-
-</h1>
-
-
-
-<p class="hero-headline">
+<p class="headline">
 
 {v["headline"]}
 
 </p>
 
 
+<p class="location">
 
-{location_html}
+{v["location"]}
+
+</p>
 
 
 
-<div class="hero-links">
+<div class="links">
 
 {links_html}
-
 {email_link}
 
 </div>
 
 
+
 </div>
 
 
-<div class="hero-shimmer"></div>
-
-
 </header>
+
 
 
 
@@ -152,7 +122,7 @@ Hello I'm
 
 <h2>Skills</h2>
 
-<div class="skills-grid">
+<div class="skills-container">
 
 {skills_html}
 
@@ -200,6 +170,7 @@ Built with AI Portfolio Builder
 
 
 </body>
+
 </html>
 """
 
@@ -210,30 +181,24 @@ def css() -> str:
 
 :root{
 
---p:#a855f7;
---c:#22d3ee;
+--text:#111827;
 
---bg:#07070f;
+--muted:#6b7280;
 
---text:#e2e8f0;
---muted:#94a3b8;
+--border:#e5e7eb;
 
---card:rgba(255,255,255,.03);
+--bg:#ffffff;
 
---border:rgba(168,85,247,.2);
+--bg-alt:#f9fafb;
 
 }
 
 
 
-/* Reset */
-
 *{
-
 margin:0;
 padding:0;
 box-sizing:border-box;
-
 }
 
 
@@ -256,7 +221,7 @@ line-height:1.7;
 
 .container{
 
-max-width:1150px;
+max-width:950px;
 
 margin:auto;
 
@@ -266,137 +231,162 @@ padding:0 2rem;
 
 
 
-/* Grid */
-
-.bg-grid{
-
-position:fixed;
-
-inset:0;
-
-background-image:
-
-linear-gradient(rgba(168,85,247,.04) 1px,transparent 1px),
-
-linear-gradient(90deg,rgba(168,85,247,.04) 1px,transparent 1px);
-
-background-size:64px 64px;
-
-}
-
-
-
-/* Orbs */
-
-.orb{
-
-position:fixed;
-
-border-radius:50%;
-
-filter:blur(90px);
-
-}
-
-
-
-.orb-a{
-
-width:500px;
-height:500px;
-
-background:rgba(168,85,247,.15);
-
-top:-150px;
-left:-150px;
-
-}
-
-
-
-.orb-b{
-
-width:400px;
-height:400px;
-
-background:rgba(34,211,238,.12);
-
-bottom:-150px;
-right:-150px;
-
-}
-
-
-
 /* Hero */
 
 .hero{
 
-padding:6rem 0 4rem;
+padding:8rem 0 6rem;
+
+text-align:center;
+
+color:white;
+
+background:linear-gradient(
+270deg,
+#6366f1,
+#8b5cf6,
+#ec4899,
+#6366f1
+);
+
+background-size:600% 600%;
+
+animation:gradientMove 18s ease infinite;
 
 }
 
 
 
-.hero-inner{
+@keyframes gradientMove{
 
-max-width:700px;
+0%{background-position:0% 50%}
+
+50%{background-position:100% 50%}
+
+100%{background-position:0% 50%}
 
 }
 
 
 
-.hero-name{
+/* Name */
 
-font-family:'Space Grotesk';
+.hero h1{
 
-font-size:clamp(2.8rem,6vw,4.5rem);
+font-size:clamp(3.5rem,8vw,6rem);
 
-background:linear-gradient(135deg,var(--p),var(--c));
+font-weight:700;
+
+letter-spacing:-2px;
+
+margin-bottom:10px;
+
+
+background:linear-gradient(
+90deg,
+white,
+#e0e7ff
+);
 
 -webkit-background-clip:text;
 
 -webkit-text-fill-color:transparent;
 
-margin-bottom:10px;
+animation:fadeUp .8s ease;
 
 }
 
 
 
-.hero-headline{
+/* Image */
 
-color:var(--muted);
+.hero-image{
+
+width:180px;
+
+height:180px;
+
+border-radius:50%;
+
+object-fit:cover;
+
+margin-bottom:25px;
+
+box-shadow:0 20px 60px rgba(0,0,0,.35);
+
+animation:fadeUp .9s ease;
+
+}
+
+
+
+/* Headline */
+
+.headline{
+
+font-size:1.3rem;
+
+opacity:.95;
+
+margin-bottom:10px;
+
+animation:fadeUp 1s ease;
+
+}
+
+
+
+.location{
+
+opacity:.75;
 
 margin-bottom:20px;
 
+animation:fadeUp 1.1s ease;
+
 }
 
 
 
-.hero-links{
+/* Links */
+
+.links{
 
 display:flex;
+
+justify-content:center;
 
 gap:10px;
 
 flex-wrap:wrap;
 
+animation:fadeUp 1.2s ease;
+
 }
 
 
 
-.hero-links a{
+.links a{
 
-border:1px solid var(--border);
+border:1px solid rgba(255,255,255,.4);
 
 padding:8px 16px;
 
 border-radius:6px;
 
+color:white;
+
 text-decoration:none;
 
-color:var(--text);
+transition:.2s;
+
+}
+
+
+
+.links a:hover{
+
+background:rgba(255,255,255,.2);
 
 }
 
@@ -420,21 +410,29 @@ margin-bottom:4rem;
 
 
 
+/* Titles */
+
 h2{
 
 margin-bottom:1.5rem;
+
+font-size:1.4rem;
+
+border-bottom:2px solid #6366f1;
+
+padding-bottom:6px;
 
 }
 
 
 
-/* Bio */
+/* About */
 
 .bio{
 
 max-width:700px;
 
-color:var(--muted);
+color:#374151;
 
 }
 
@@ -442,7 +440,7 @@ color:var(--muted);
 
 /* Skills */
 
-.skills-grid{
+.skills-container{
 
 display:flex;
 
@@ -456,11 +454,23 @@ gap:8px;
 
 .skill-tag{
 
-border:1px solid var(--border);
+background:var(--bg-alt);
 
-padding:6px 12px;
+padding:6px 14px;
 
 border-radius:20px;
+
+border:1px solid var(--border);
+
+transition:.2s;
+
+}
+
+
+
+.skill-tag:hover{
+
+border-color:#6366f1;
 
 }
 
@@ -468,21 +478,35 @@ border-radius:20px;
 
 /* Cards */
 
-.card{
+.experience-item,
+.education-item{
 
-background:var(--card);
+background:var(--bg-alt);
 
 padding:1.5rem;
 
-border-radius:10px;
+border-radius:12px;
 
 margin-bottom:1rem;
 
-border-left:3px solid var(--p);
+transition:.2s;
 
 }
 
 
+
+.experience-item:hover,
+.education-item:hover{
+
+transform:translateY(-3px);
+
+box-shadow:0 10px 30px rgba(0,0,0,.08);
+
+}
+
+
+
+/* Footer */
 
 footer{
 
@@ -496,13 +520,46 @@ color:var(--muted);
 
 
 
+/* Animations */
+
+@keyframes fadeUp{
+
+from{
+opacity:0;
+transform:translateY(30px);
+}
+
+to{
+opacity:1;
+transform:translateY(0);
+}
+
+}
+
+
+
 /* Mobile */
 
-@media(max-width:800px){
+@media(max-width:640px){
 
 .hero{
 
-padding:4rem 0;
+padding:5rem 0 4rem;
+
+}
+
+
+.hero h1{
+
+font-size:2.5rem;
+
+}
+
+
+.hero-image{
+
+width:130px;
+height:130px;
 
 }
 
@@ -533,9 +590,6 @@ max-width:none;
 }
 
 """
-
-
-# Helpers
 
 
 def _links(v: dict) -> str:
@@ -569,7 +623,7 @@ def _experience(items: list) -> str:
         highlights = "".join(f"<li>{h}</li>" for h in exp["highlights"])
 
         out += (
-            f'<div class="card">'
+            f'<div class="experience-item">'
             f"<b>{exp['title']}</b><br>"
             f"{exp['company']}<br>"
             f"<small>{exp['duration']}</small>"
@@ -587,7 +641,7 @@ def _education(items: list) -> str:
 
     for edu in items:
         out += (
-            f'<div class="card">'
+            f'<div class="education-item">'
             f"{edu['degree']} {edu['field']}<br>"
             f"{edu['institution']} {edu['year']}"
             f"</div>"

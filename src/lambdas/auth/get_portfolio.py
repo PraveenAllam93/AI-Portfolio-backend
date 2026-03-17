@@ -8,7 +8,7 @@ import os
 import boto3
 
 dynamodb = boto3.resource('dynamodb')
-DYNAMODB_TABLE = os.environ.get('DYNAMODB_TABLE')
+MAIN_TABLE = os.environ.get('MAIN_TABLE')
 
 # ---------------------------------------------------------------------------
 # Structured logger — outputs JSON, captured by CloudWatch Logs
@@ -63,7 +63,7 @@ def lambda_handler(event, context):
             return _response(403, {'error': 'Access denied'})
 
         # Get portfolio from DynamoDB
-        table = dynamodb.Table(DYNAMODB_TABLE)
+        table = dynamodb.Table(MAIN_TABLE)
         response = table.get_item(
             Key={
                 'PK': f'USER#{user_id}',

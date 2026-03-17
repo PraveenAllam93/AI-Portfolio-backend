@@ -45,6 +45,11 @@ output "portfolio_bucket_name" {
   value       = module.s3.portfolio_bucket_name
 }
 
+output "templates_bucket_name" {
+  description = "Name of the templates bucket (preview HTML files)"
+  value       = module.s3.templates_bucket_name
+}
+
 # -----------------------------------------------------------------------------
 # DYNAMODB
 # -----------------------------------------------------------------------------

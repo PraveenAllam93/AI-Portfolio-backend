@@ -87,6 +87,16 @@ variable "ai_enhance_portfolio_lambda_invoke_arn" {
   type        = string
 }
 
+variable "get_templates_lambda_arn" {
+  description = "ARN of the get templates Lambda"
+  type        = string
+}
+
+variable "get_templates_lambda_invoke_arn" {
+  description = "Invoke ARN of the get templates Lambda"
+  type        = string
+}
+
 variable "tags" {
   description = "Tags to apply to resources"
   type        = map(string)
