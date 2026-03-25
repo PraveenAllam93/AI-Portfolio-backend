@@ -180,6 +180,10 @@ module "lambda" {
   # CORS: lock to your frontend domain in prod (e.g. https://app.example.com)
   allowed_origin = var.allowed_origin
 
+  # CloudFront: portfolio generator invalidates cache after each regeneration
+  cloudfront_distribution_id  = module.cloudfront.distribution_id
+  cloudfront_distribution_arn = module.cloudfront.distribution_arn
+
   tags = local.common_tags
 }
 
@@ -213,6 +217,17 @@ module "api_gateway" {
   patch_portfolio_lambda_invoke_arn          = module.lambda.patch_portfolio_invoke_arn
   ai_enhance_portfolio_lambda_arn            = module.lambda.ai_enhance_portfolio_arn
   ai_enhance_portfolio_lambda_invoke_arn     = module.lambda.ai_enhance_portfolio_invoke_arn
+  publish_portfolio_lambda_arn               = module.lambda.publish_portfolio_arn
+  publish_portfolio_lambda_invoke_arn        = module.lambda.publish_portfolio_invoke_arn
+
+  interview_start_lambda_arn         = module.lambda.interview_start_arn
+  interview_start_lambda_invoke_arn  = module.lambda.interview_start_invoke_arn
+  interview_answer_lambda_arn        = module.lambda.interview_answer_arn
+  interview_answer_lambda_invoke_arn = module.lambda.interview_answer_invoke_arn
+  interview_exit_lambda_arn          = module.lambda.interview_exit_arn
+  interview_exit_lambda_invoke_arn   = module.lambda.interview_exit_invoke_arn
+  interview_report_lambda_arn        = module.lambda.interview_report_arn
+  interview_report_lambda_invoke_arn = module.lambda.interview_report_invoke_arn
 
   tags = local.common_tags
 }

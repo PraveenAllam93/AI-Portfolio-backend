@@ -6,9 +6,20 @@ API endpoint to check the processing status of a resume upload.
 import json
 import os
 import boto3
+from datetime import datetime, timezone, timedelta
 
 dynamodb = boto3.resource('dynamodb')
 DYNAMODB_TABLE = os.environ.get('DYNAMODB_TABLE')
+
+# AI processing Lambda timeout is 300s. If a record is still AI_PROCESSING
+# after this threshold, the Lambda was killed (timeout/crash) and can never
+# update its own status — treat it as failed so the frontend stops polling.
+_AI_STALE_THRESHOLD = timedelta(seconds=360)
+
+# Portfolio generator timeout is 60s, invoked async with up to 3 Lambda retries
+# (3 × 60s = 180s) plus buffer. If AI_COMPLETE or GENERATING has not progressed
+# past this threshold, the portfolio Lambda failed silently — surface as FAILED.
+_PORTFOLIO_STALE_THRESHOLD = timedelta(seconds=300)
 
 # ---------------------------------------------------------------------------
 # Structured logger — outputs JSON to stdout, captured by CloudWatch Logs
@@ -102,6 +113,48 @@ def lambda_handler(event, context):
 
         item = response['Item']
         status = item.get('status', 'UNKNOWN')
+
+        # If AI processing Lambda was killed (timeout/crash), it can never update
+        # its own status. Detect stale AI_PROCESSING and surface it as AI_FAILED
+        # so the frontend stops polling instead of waiting forever.
+        if status == 'AI_PROCESSING':
+            updated_at_str = item.get('updatedAt')
+            if updated_at_str:
+                try:
+                    updated_at = datetime.fromisoformat(updated_at_str)
+                    if datetime.now(timezone.utc) - updated_at > _AI_STALE_THRESHOLD:
+                        status = 'AI_FAILED'
+                        _log_info(
+                            "Stale AI_PROCESSING detected — surfacing as AI_FAILED",
+                            correlationId=correlation_id,
+                            userId=user_id,
+                            uploadId=upload_id,
+                            updatedAt=updated_at_str,
+                        )
+                except (ValueError, TypeError):
+                    pass
+
+        # If portfolio Lambda failed silently (async invocation — errors are not
+        # propagated back), the upload stays at AI_COMPLETE or GENERATING forever.
+        # Detect stale portfolio states and surface as FAILED so polling stops.
+        if status in ('AI_COMPLETE', 'GENERATING'):
+            updated_at_str = item.get('updatedAt')
+            if updated_at_str:
+                try:
+                    updated_at = datetime.fromisoformat(updated_at_str)
+                    if datetime.now(timezone.utc) - updated_at > _PORTFOLIO_STALE_THRESHOLD:
+                        stalled_status = status
+                        status = 'FAILED'
+                        _log_info(
+                            "Stale portfolio generation detected — surfacing as FAILED",
+                            correlationId=correlation_id,
+                            userId=user_id,
+                            uploadId=upload_id,
+                            stalledStatus=stalled_status,
+                            updatedAt=updated_at_str,
+                        )
+                except (ValueError, TypeError):
+                    pass
 
         # Build response
         result = {

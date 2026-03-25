@@ -8,6 +8,7 @@ import os
 import re
 import uuid
 import boto3
+from boto3.dynamodb.conditions import Key
 from datetime import datetime, timezone
 
 s3_client = boto3.client('s3')
@@ -29,6 +30,9 @@ ALLOWED_MIME_TYPES = os.environ.get(
 DYNAMODB_TABLE = os.environ.get('DYNAMODB_TABLE')
 # Maximum concurrent pending/active uploads per user (abuse protection)
 MAX_ACTIVE_UPLOADS = int(os.environ.get('MAX_ACTIVE_UPLOADS', 5))
+
+ALLOWED_CATEGORIES = {'software_engineer', 'designer', 'marketing', 'finance'}
+ALLOWED_TEMPLATES = {'minimal', 'modern', 'bold', 'creative', 'aurora', 'nebula', 'luxury', 'executive'}
 
 # Safe filename: block path separators, null bytes, and Windows reserved chars.
 # Allowlist approach was too strict (rejected spaces in names like "resume 1.pdf").
@@ -73,6 +77,8 @@ def lambda_handler(event, context):
         body = json.loads(event.get('body') or '{}')
         filename = body.get('filename', '')
         content_type = body.get('contentType', '')
+        category = body.get('category', '')
+        template_id = body.get('templateId', 'minimal')
 
         _log_info(
             "Presigned URL requested",
@@ -80,6 +86,8 @@ def lambda_handler(event, context):
             userId=user_id,
             filename=filename,
             contentType=content_type,
+            category=category,
+            templateId=template_id,
         )
 
         # --- Validation 1: filename characters (path-traversal protection) ---
@@ -121,7 +129,33 @@ def lambda_handler(event, context):
                 'allowed': ALLOWED_MIME_TYPES,
             })
 
-        # --- Validation 4: per-user upload quota ---
+        # --- Validation 4: category ---
+        if category not in ALLOWED_CATEGORIES:
+            _log_warning(
+                "Invalid category rejected",
+                correlationId=correlation_id,
+                userId=user_id,
+                category=category,
+            )
+            return _response(400, {
+                'error': 'Invalid category',
+                'allowed': sorted(ALLOWED_CATEGORIES),
+            })
+
+        # --- Validation 5: templateId ---
+        if template_id not in ALLOWED_TEMPLATES:
+            _log_warning(
+                "Invalid templateId rejected",
+                correlationId=correlation_id,
+                userId=user_id,
+                templateId=template_id,
+            )
+            return _response(400, {
+                'error': 'Invalid templateId',
+                'allowed': sorted(ALLOWED_TEMPLATES),
+            })
+
+        # --- Validation 6: per-user upload quota ---
         # Count uploads in non-terminal states to prevent pipeline flooding
         if _active_upload_count(user_id) >= MAX_ACTIVE_UPLOADS:
             _log_warning(
@@ -167,6 +201,8 @@ def lambda_handler(event, context):
             'uploadId': upload_id,
             'userId': user_id,
             'filename': safe_filename,
+            'category': category,
+            'templateId': template_id,
             'status': 'PENDING_UPLOAD',
             'createdAt': datetime.now(timezone.utc).isoformat(),
             'GSI1PK': 'STATUS#PENDING_UPLOAD',
@@ -185,6 +221,7 @@ def lambda_handler(event, context):
         return _response(200, {
             'uploadUrl': presigned_url,
             'uploadId': upload_id,
+            'category': category,
             'expiresIn': PRESIGNED_URL_EXPIRY,
         })
 
@@ -201,9 +238,8 @@ def lambda_handler(event, context):
 def _active_upload_count(user_id: str) -> int:
     """
     Count uploads for this user that are still in-flight.
-    Uses the GSI1 index to query by status prefix.
-    In-flight statuses: PENDING_UPLOAD, VALIDATING, EXTRACTING_TEXT,
-    QUEUED_FOR_AI, AI_PROCESSING, GENERATING.
+    Queries the user's UPLOAD# records directly and checks the live status
+    attribute — avoids relying on GSI1PK which is never updated after creation.
     """
     in_flight = {
         'PENDING_UPLOAD', 'VALIDATING', 'VALIDATED',
@@ -211,21 +247,24 @@ def _active_upload_count(user_id: str) -> int:
     }
     table = dynamodb.Table(DYNAMODB_TABLE)
     count = 0
-    for status in in_flight:
-        resp = table.query(
-            IndexName='GSI1',
-            KeyConditionExpression=(
-                'GSI1PK = :gsi1pk AND begins_with(GSI1SK, :prefix)'
-            ),
-            ExpressionAttributeValues={
-                ':gsi1pk': f'STATUS#{status}',
-                ':prefix': f'USER#{user_id}#',
-            },
-            Select='COUNT',
-        )
-        count += resp.get('Count', 0)
-        if count >= MAX_ACTIVE_UPLOADS:
+    query_kwargs = {
+        'KeyConditionExpression': (
+            Key('PK').eq(f'USER#{user_id}') & Key('SK').begins_with('UPLOAD#')
+        ),
+        'ProjectionExpression': '#s',
+        'ExpressionAttributeNames': {'#s': 'status'},
+    }
+    while True:
+        resp = table.query(**query_kwargs)
+        for item in resp.get('Items', []):
+            if item.get('status') in in_flight:
+                count += 1
+                if count >= MAX_ACTIVE_UPLOADS:
+                    return count
+        last_key = resp.get('LastEvaluatedKey')
+        if not last_key:
             break
+        query_kwargs['ExclusiveStartKey'] = last_key
     return count
 
 

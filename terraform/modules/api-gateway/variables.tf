@@ -87,8 +87,51 @@ variable "ai_enhance_portfolio_lambda_invoke_arn" {
   type        = string
 }
 
+variable "interview_start_lambda_arn" {
+  description = "ARN of the interview start Lambda"
+  type        = string
+}
+variable "interview_start_lambda_invoke_arn" {
+  description = "Invoke ARN of the interview start Lambda"
+  type        = string
+}
+variable "interview_answer_lambda_arn" {
+  description = "ARN of the interview answer Lambda"
+  type        = string
+}
+variable "interview_answer_lambda_invoke_arn" {
+  description = "Invoke ARN of the interview answer Lambda"
+  type        = string
+}
+variable "interview_exit_lambda_arn" {
+  description = "ARN of the interview exit Lambda"
+  type        = string
+}
+variable "interview_exit_lambda_invoke_arn" {
+  description = "Invoke ARN of the interview exit Lambda"
+  type        = string
+}
+variable "interview_report_lambda_arn" {
+  description = "ARN of the interview report Lambda"
+  type        = string
+}
+variable "interview_report_lambda_invoke_arn" {
+  description = "Invoke ARN of the interview report Lambda"
+  type        = string
+}
+
 variable "tags" {
   description = "Tags to apply to resources"
   type        = map(string)
   default     = {}
+}
+
+variable "publish_portfolio_lambda_arn" {
+  description = "ARN of the publish portfolio Lambda"
+  type        = string
+}
+
+variable "publish_portfolio_lambda_invoke_arn" {
+  description = "Invoke ARN of the publish portfolio Lambda"
+  type        = string
 }

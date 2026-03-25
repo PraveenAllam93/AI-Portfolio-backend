@@ -145,6 +145,17 @@ variable "access_logs_bucket_name" {
   type        = string
 }
 
+# CloudFront — used by portfolio generator for cache invalidation
+variable "cloudfront_distribution_id" {
+  description = "ID of the CloudFront distribution for portfolio cache invalidation"
+  type        = string
+}
+
+variable "cloudfront_distribution_arn" {
+  description = "ARN of the CloudFront distribution for portfolio cache invalidation IAM policy"
+  type        = string
+}
+
 # CORS
 variable "allowed_origin" {
   description = "CORS allowed origin for API responses (e.g. https://app.example.com)"

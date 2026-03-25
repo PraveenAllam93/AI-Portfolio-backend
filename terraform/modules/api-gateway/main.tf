@@ -461,6 +461,389 @@ resource "aws_api_gateway_integration_response" "options_portfolio_ai_enhance" {
 }
 
 # -----------------------------------------------------------------------------
+# /portfolio/{userId}/publish — POST (Cognito auth, publish draft to live)
+# -----------------------------------------------------------------------------
+
+resource "aws_api_gateway_resource" "portfolio_publish" {
+  rest_api_id = aws_api_gateway_rest_api.main.id
+  parent_id   = aws_api_gateway_resource.portfolio_id.id
+  path_part   = "publish"
+}
+
+resource "aws_api_gateway_method" "post_publish_portfolio" {
+  rest_api_id   = aws_api_gateway_rest_api.main.id
+  resource_id   = aws_api_gateway_resource.portfolio_publish.id
+  http_method   = "POST"
+  authorization = "COGNITO_USER_POOLS"
+  authorizer_id = aws_api_gateway_authorizer.cognito.id
+
+  request_parameters = {
+    "method.request.path.userId" = true
+  }
+}
+
+resource "aws_api_gateway_integration" "post_publish_portfolio" {
+  rest_api_id             = aws_api_gateway_rest_api.main.id
+  resource_id             = aws_api_gateway_resource.portfolio_publish.id
+  http_method             = aws_api_gateway_method.post_publish_portfolio.http_method
+  integration_http_method = "POST"
+  type                    = "AWS_PROXY"
+  uri                     = var.publish_portfolio_lambda_invoke_arn
+}
+
+resource "aws_lambda_permission" "api_publish_portfolio" {
+  statement_id  = "AllowAPIGatewayInvoke"
+  action        = "lambda:InvokeFunction"
+  function_name = var.publish_portfolio_lambda_arn
+  principal     = "apigateway.amazonaws.com"
+  source_arn    = "${aws_api_gateway_rest_api.main.execution_arn}/*/*"
+}
+
+resource "aws_api_gateway_method" "options_publish_portfolio" {
+  rest_api_id   = aws_api_gateway_rest_api.main.id
+  resource_id   = aws_api_gateway_resource.portfolio_publish.id
+  http_method   = "OPTIONS"
+  authorization = "NONE"
+}
+
+resource "aws_api_gateway_integration" "options_publish_portfolio" {
+  rest_api_id = aws_api_gateway_rest_api.main.id
+  resource_id = aws_api_gateway_resource.portfolio_publish.id
+  http_method = aws_api_gateway_method.options_publish_portfolio.http_method
+  type        = "MOCK"
+  request_templates = { "application/json" = "{\"statusCode\": 200}" }
+}
+
+resource "aws_api_gateway_method_response" "options_publish_portfolio" {
+  rest_api_id = aws_api_gateway_rest_api.main.id
+  resource_id = aws_api_gateway_resource.portfolio_publish.id
+  http_method = aws_api_gateway_method.options_publish_portfolio.http_method
+  status_code = "200"
+  response_parameters = {
+    "method.response.header.Access-Control-Allow-Headers" = true
+    "method.response.header.Access-Control-Allow-Methods" = true
+    "method.response.header.Access-Control-Allow-Origin"  = true
+  }
+}
+
+resource "aws_api_gateway_integration_response" "options_publish_portfolio" {
+  rest_api_id = aws_api_gateway_rest_api.main.id
+  resource_id = aws_api_gateway_resource.portfolio_publish.id
+  http_method = aws_api_gateway_method.options_publish_portfolio.http_method
+  status_code = aws_api_gateway_method_response.options_publish_portfolio.status_code
+  response_parameters = {
+    "method.response.header.Access-Control-Allow-Headers" = "'Content-Type,Authorization'"
+    "method.response.header.Access-Control-Allow-Methods" = "'OPTIONS,POST'"
+    "method.response.header.Access-Control-Allow-Origin"  = "'*'"
+  }
+}
+
+# =============================================================================
+# INTERVIEW AGENT ROUTES
+# POST /interview/start
+# POST /interview/answer
+# POST /interview/exit
+# GET  /interview/{sessionId}/report
+# =============================================================================
+
+resource "aws_api_gateway_resource" "interview" {
+  rest_api_id = aws_api_gateway_rest_api.main.id
+  parent_id   = aws_api_gateway_rest_api.main.root_resource_id
+  path_part   = "interview"
+}
+
+# /interview/start
+resource "aws_api_gateway_resource" "interview_start" {
+  rest_api_id = aws_api_gateway_rest_api.main.id
+  parent_id   = aws_api_gateway_resource.interview.id
+  path_part   = "start"
+}
+
+resource "aws_api_gateway_method" "post_interview_start" {
+  rest_api_id   = aws_api_gateway_rest_api.main.id
+  resource_id   = aws_api_gateway_resource.interview_start.id
+  http_method   = "POST"
+  authorization = "COGNITO_USER_POOLS"
+  authorizer_id = aws_api_gateway_authorizer.cognito.id
+}
+
+resource "aws_api_gateway_integration" "post_interview_start" {
+  rest_api_id             = aws_api_gateway_rest_api.main.id
+  resource_id             = aws_api_gateway_resource.interview_start.id
+  http_method             = aws_api_gateway_method.post_interview_start.http_method
+  integration_http_method = "POST"
+  type                    = "AWS_PROXY"
+  uri                     = var.interview_start_lambda_invoke_arn
+}
+
+resource "aws_lambda_permission" "api_interview_start" {
+  statement_id  = "AllowAPIGatewayInvoke"
+  action        = "lambda:InvokeFunction"
+  function_name = var.interview_start_lambda_arn
+  principal     = "apigateway.amazonaws.com"
+  source_arn    = "${aws_api_gateway_rest_api.main.execution_arn}/*/*"
+}
+
+resource "aws_api_gateway_method" "options_interview_start" {
+  rest_api_id   = aws_api_gateway_rest_api.main.id
+  resource_id   = aws_api_gateway_resource.interview_start.id
+  http_method   = "OPTIONS"
+  authorization = "NONE"
+}
+
+resource "aws_api_gateway_integration" "options_interview_start" {
+  rest_api_id = aws_api_gateway_rest_api.main.id
+  resource_id = aws_api_gateway_resource.interview_start.id
+  http_method = aws_api_gateway_method.options_interview_start.http_method
+  type        = "MOCK"
+  request_templates = { "application/json" = "{\"statusCode\": 200}" }
+}
+
+resource "aws_api_gateway_method_response" "options_interview_start" {
+  rest_api_id = aws_api_gateway_rest_api.main.id
+  resource_id = aws_api_gateway_resource.interview_start.id
+  http_method = aws_api_gateway_method.options_interview_start.http_method
+  status_code = "200"
+  response_parameters = {
+    "method.response.header.Access-Control-Allow-Headers" = true
+    "method.response.header.Access-Control-Allow-Methods" = true
+    "method.response.header.Access-Control-Allow-Origin"  = true
+  }
+}
+
+resource "aws_api_gateway_integration_response" "options_interview_start" {
+  rest_api_id = aws_api_gateway_rest_api.main.id
+  resource_id = aws_api_gateway_resource.interview_start.id
+  http_method = aws_api_gateway_method.options_interview_start.http_method
+  status_code = aws_api_gateway_method_response.options_interview_start.status_code
+  response_parameters = {
+    "method.response.header.Access-Control-Allow-Headers" = "'Content-Type,Authorization'"
+    "method.response.header.Access-Control-Allow-Methods" = "'OPTIONS,POST'"
+    "method.response.header.Access-Control-Allow-Origin"  = "'*'"
+  }
+}
+
+# /interview/answer
+resource "aws_api_gateway_resource" "interview_answer" {
+  rest_api_id = aws_api_gateway_rest_api.main.id
+  parent_id   = aws_api_gateway_resource.interview.id
+  path_part   = "answer"
+}
+
+resource "aws_api_gateway_method" "post_interview_answer" {
+  rest_api_id   = aws_api_gateway_rest_api.main.id
+  resource_id   = aws_api_gateway_resource.interview_answer.id
+  http_method   = "POST"
+  authorization = "COGNITO_USER_POOLS"
+  authorizer_id = aws_api_gateway_authorizer.cognito.id
+}
+
+resource "aws_api_gateway_integration" "post_interview_answer" {
+  rest_api_id             = aws_api_gateway_rest_api.main.id
+  resource_id             = aws_api_gateway_resource.interview_answer.id
+  http_method             = aws_api_gateway_method.post_interview_answer.http_method
+  integration_http_method = "POST"
+  type                    = "AWS_PROXY"
+  uri                     = var.interview_answer_lambda_invoke_arn
+}
+
+resource "aws_lambda_permission" "api_interview_answer" {
+  statement_id  = "AllowAPIGatewayInvoke"
+  action        = "lambda:InvokeFunction"
+  function_name = var.interview_answer_lambda_arn
+  principal     = "apigateway.amazonaws.com"
+  source_arn    = "${aws_api_gateway_rest_api.main.execution_arn}/*/*"
+}
+
+resource "aws_api_gateway_method" "options_interview_answer" {
+  rest_api_id   = aws_api_gateway_rest_api.main.id
+  resource_id   = aws_api_gateway_resource.interview_answer.id
+  http_method   = "OPTIONS"
+  authorization = "NONE"
+}
+
+resource "aws_api_gateway_integration" "options_interview_answer" {
+  rest_api_id = aws_api_gateway_rest_api.main.id
+  resource_id = aws_api_gateway_resource.interview_answer.id
+  http_method = aws_api_gateway_method.options_interview_answer.http_method
+  type        = "MOCK"
+  request_templates = { "application/json" = "{\"statusCode\": 200}" }
+}
+
+resource "aws_api_gateway_method_response" "options_interview_answer" {
+  rest_api_id = aws_api_gateway_rest_api.main.id
+  resource_id = aws_api_gateway_resource.interview_answer.id
+  http_method = aws_api_gateway_method.options_interview_answer.http_method
+  status_code = "200"
+  response_parameters = {
+    "method.response.header.Access-Control-Allow-Headers" = true
+    "method.response.header.Access-Control-Allow-Methods" = true
+    "method.response.header.Access-Control-Allow-Origin"  = true
+  }
+}
+
+resource "aws_api_gateway_integration_response" "options_interview_answer" {
+  rest_api_id = aws_api_gateway_rest_api.main.id
+  resource_id = aws_api_gateway_resource.interview_answer.id
+  http_method = aws_api_gateway_method.options_interview_answer.http_method
+  status_code = aws_api_gateway_method_response.options_interview_answer.status_code
+  response_parameters = {
+    "method.response.header.Access-Control-Allow-Headers" = "'Content-Type,Authorization'"
+    "method.response.header.Access-Control-Allow-Methods" = "'OPTIONS,POST'"
+    "method.response.header.Access-Control-Allow-Origin"  = "'*'"
+  }
+}
+
+# /interview/exit
+resource "aws_api_gateway_resource" "interview_exit" {
+  rest_api_id = aws_api_gateway_rest_api.main.id
+  parent_id   = aws_api_gateway_resource.interview.id
+  path_part   = "exit"
+}
+
+resource "aws_api_gateway_method" "post_interview_exit" {
+  rest_api_id   = aws_api_gateway_rest_api.main.id
+  resource_id   = aws_api_gateway_resource.interview_exit.id
+  http_method   = "POST"
+  authorization = "COGNITO_USER_POOLS"
+  authorizer_id = aws_api_gateway_authorizer.cognito.id
+}
+
+resource "aws_api_gateway_integration" "post_interview_exit" {
+  rest_api_id             = aws_api_gateway_rest_api.main.id
+  resource_id             = aws_api_gateway_resource.interview_exit.id
+  http_method             = aws_api_gateway_method.post_interview_exit.http_method
+  integration_http_method = "POST"
+  type                    = "AWS_PROXY"
+  uri                     = var.interview_exit_lambda_invoke_arn
+}
+
+resource "aws_lambda_permission" "api_interview_exit" {
+  statement_id  = "AllowAPIGatewayInvoke"
+  action        = "lambda:InvokeFunction"
+  function_name = var.interview_exit_lambda_arn
+  principal     = "apigateway.amazonaws.com"
+  source_arn    = "${aws_api_gateway_rest_api.main.execution_arn}/*/*"
+}
+
+resource "aws_api_gateway_method" "options_interview_exit" {
+  rest_api_id   = aws_api_gateway_rest_api.main.id
+  resource_id   = aws_api_gateway_resource.interview_exit.id
+  http_method   = "OPTIONS"
+  authorization = "NONE"
+}
+
+resource "aws_api_gateway_integration" "options_interview_exit" {
+  rest_api_id = aws_api_gateway_rest_api.main.id
+  resource_id = aws_api_gateway_resource.interview_exit.id
+  http_method = aws_api_gateway_method.options_interview_exit.http_method
+  type        = "MOCK"
+  request_templates = { "application/json" = "{\"statusCode\": 200}" }
+}
+
+resource "aws_api_gateway_method_response" "options_interview_exit" {
+  rest_api_id = aws_api_gateway_rest_api.main.id
+  resource_id = aws_api_gateway_resource.interview_exit.id
+  http_method = aws_api_gateway_method.options_interview_exit.http_method
+  status_code = "200"
+  response_parameters = {
+    "method.response.header.Access-Control-Allow-Headers" = true
+    "method.response.header.Access-Control-Allow-Methods" = true
+    "method.response.header.Access-Control-Allow-Origin"  = true
+  }
+}
+
+resource "aws_api_gateway_integration_response" "options_interview_exit" {
+  rest_api_id = aws_api_gateway_rest_api.main.id
+  resource_id = aws_api_gateway_resource.interview_exit.id
+  http_method = aws_api_gateway_method.options_interview_exit.http_method
+  status_code = aws_api_gateway_method_response.options_interview_exit.status_code
+  response_parameters = {
+    "method.response.header.Access-Control-Allow-Headers" = "'Content-Type,Authorization'"
+    "method.response.header.Access-Control-Allow-Methods" = "'OPTIONS,POST'"
+    "method.response.header.Access-Control-Allow-Origin"  = "'*'"
+  }
+}
+
+# /interview/{sessionId}
+resource "aws_api_gateway_resource" "interview_session_id" {
+  rest_api_id = aws_api_gateway_rest_api.main.id
+  parent_id   = aws_api_gateway_resource.interview.id
+  path_part   = "{sessionId}"
+}
+
+# /interview/{sessionId}/report
+resource "aws_api_gateway_resource" "interview_report" {
+  rest_api_id = aws_api_gateway_rest_api.main.id
+  parent_id   = aws_api_gateway_resource.interview_session_id.id
+  path_part   = "report"
+}
+
+resource "aws_api_gateway_method" "get_interview_report" {
+  rest_api_id   = aws_api_gateway_rest_api.main.id
+  resource_id   = aws_api_gateway_resource.interview_report.id
+  http_method   = "GET"
+  authorization = "COGNITO_USER_POOLS"
+  authorizer_id = aws_api_gateway_authorizer.cognito.id
+}
+
+resource "aws_api_gateway_integration" "get_interview_report" {
+  rest_api_id             = aws_api_gateway_rest_api.main.id
+  resource_id             = aws_api_gateway_resource.interview_report.id
+  http_method             = aws_api_gateway_method.get_interview_report.http_method
+  integration_http_method = "POST"
+  type                    = "AWS_PROXY"
+  uri                     = var.interview_report_lambda_invoke_arn
+}
+
+resource "aws_lambda_permission" "api_interview_report" {
+  statement_id  = "AllowAPIGatewayInvoke"
+  action        = "lambda:InvokeFunction"
+  function_name = var.interview_report_lambda_arn
+  principal     = "apigateway.amazonaws.com"
+  source_arn    = "${aws_api_gateway_rest_api.main.execution_arn}/*/*"
+}
+
+resource "aws_api_gateway_method" "options_interview_report" {
+  rest_api_id   = aws_api_gateway_rest_api.main.id
+  resource_id   = aws_api_gateway_resource.interview_report.id
+  http_method   = "OPTIONS"
+  authorization = "NONE"
+}
+
+resource "aws_api_gateway_integration" "options_interview_report" {
+  rest_api_id = aws_api_gateway_rest_api.main.id
+  resource_id = aws_api_gateway_resource.interview_report.id
+  http_method = aws_api_gateway_method.options_interview_report.http_method
+  type        = "MOCK"
+  request_templates = { "application/json" = "{\"statusCode\": 200}" }
+}
+
+resource "aws_api_gateway_method_response" "options_interview_report" {
+  rest_api_id = aws_api_gateway_rest_api.main.id
+  resource_id = aws_api_gateway_resource.interview_report.id
+  http_method = aws_api_gateway_method.options_interview_report.http_method
+  status_code = "200"
+  response_parameters = {
+    "method.response.header.Access-Control-Allow-Headers" = true
+    "method.response.header.Access-Control-Allow-Methods" = true
+    "method.response.header.Access-Control-Allow-Origin"  = true
+  }
+}
+
+resource "aws_api_gateway_integration_response" "options_interview_report" {
+  rest_api_id = aws_api_gateway_rest_api.main.id
+  resource_id = aws_api_gateway_resource.interview_report.id
+  http_method = aws_api_gateway_method.options_interview_report.http_method
+  status_code = aws_api_gateway_method_response.options_interview_report.status_code
+  response_parameters = {
+    "method.response.header.Access-Control-Allow-Headers" = "'Content-Type,Authorization'"
+    "method.response.header.Access-Control-Allow-Methods" = "'OPTIONS,GET'"
+    "method.response.header.Access-Control-Allow-Origin"  = "'*'"
+  }
+}
+
+# -----------------------------------------------------------------------------
 # ACCESS LOGGING
 # -----------------------------------------------------------------------------
 
@@ -519,6 +902,13 @@ resource "aws_api_gateway_deployment" "main" {
       aws_api_gateway_resource.portfolio_analytics.id,
       aws_api_gateway_resource.portfolio_content.id,
       aws_api_gateway_resource.portfolio_ai_enhance.id,
+      aws_api_gateway_resource.portfolio_publish.id,
+      aws_api_gateway_resource.interview.id,
+      aws_api_gateway_resource.interview_start.id,
+      aws_api_gateway_resource.interview_answer.id,
+      aws_api_gateway_resource.interview_exit.id,
+      aws_api_gateway_resource.interview_session_id.id,
+      aws_api_gateway_resource.interview_report.id,
       aws_api_gateway_method.post_presigned_url.id,
       aws_api_gateway_method.get_status.id,
       aws_api_gateway_method.get_portfolio.id,
@@ -531,6 +921,16 @@ resource "aws_api_gateway_deployment" "main" {
       aws_api_gateway_integration.get_analytics.id,
       aws_api_gateway_integration.patch_portfolio.id,
       aws_api_gateway_integration.ai_enhance_portfolio.id,
+      aws_api_gateway_method.post_publish_portfolio.id,
+      aws_api_gateway_integration.post_publish_portfolio.id,
+      aws_api_gateway_method.post_interview_start.id,
+      aws_api_gateway_method.post_interview_answer.id,
+      aws_api_gateway_method.post_interview_exit.id,
+      aws_api_gateway_method.get_interview_report.id,
+      aws_api_gateway_integration.post_interview_start.id,
+      aws_api_gateway_integration.post_interview_answer.id,
+      aws_api_gateway_integration.post_interview_exit.id,
+      aws_api_gateway_integration.get_interview_report.id,
     ]))
   }
 

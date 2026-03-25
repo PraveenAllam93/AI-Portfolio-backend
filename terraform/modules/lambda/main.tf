@@ -213,7 +213,7 @@ resource "aws_iam_role_policy" "resume_ingestion_dynamodb" {
     Statement = [{
       Sid      = "UpdateUploadStatus"
       Effect   = "Allow"
-      Action   = ["dynamodb:UpdateItem"]
+      Action   = ["dynamodb:UpdateItem", "dynamodb:GetItem"]
       Resource = var.dynamodb_table_arn
     }]
   })
@@ -344,6 +344,21 @@ resource "aws_iam_role_policy" "portfolio_generator_dynamodb" {
   })
 }
 
+resource "aws_iam_role_policy" "portfolio_generator_cloudfront" {
+  name = "cloudfront-invalidate"
+  role = aws_iam_role.portfolio_generator.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Sid    = "InvalidatePortfolioCache"
+      Effect = "Allow"
+      # Scoped to this specific distribution only — no other CloudFront resource accessible
+      Action   = ["cloudfront:CreateInvalidation"]
+      Resource = var.cloudfront_distribution_arn
+    }]
+  })
+}
+
 # =============================================================================
 # 6 & 7. GET PORTFOLIO + GET STATUS LAMBDAS (API read-only)
 # Needs: dynamodb:GetItem only — no write, no S3, no secrets
@@ -470,6 +485,27 @@ resource "aws_lambda_permission" "quarantine_s3_trigger" {
 }
 
 # -----------------------------------------------------------------------------
+# LAMBDA LAYER: pdf_processing
+# Contains PyPDF2 and python-docx — used by resume_ingestion.
+# Keeping dependencies in a Layer means the Lambda source_dir stays clean
+# (handler.py only) and the same packages can be shared if needed in future.
+# -----------------------------------------------------------------------------
+
+data "archive_file" "pdf_processing_layer" {
+  type        = "zip"
+  source_dir  = "${path.module}/../../../src/layers/pdf_processing"
+  output_path = "${path.module}/../../../dist/layers/pdf_processing.zip"
+}
+
+resource "aws_lambda_layer_version" "pdf_processing" {
+  layer_name          = "${var.name_prefix}-pdf-processing"
+  filename            = data.archive_file.pdf_processing_layer.output_path
+  source_code_hash    = data.archive_file.pdf_processing_layer.output_base64sha256
+  compatible_runtimes = ["python3.12"]
+  description         = "PyPDF2 and python-docx for resume text extraction"
+}
+
+# -----------------------------------------------------------------------------
 # 3. RESUME INGESTION
 # -----------------------------------------------------------------------------
 
@@ -488,6 +524,7 @@ resource "aws_lambda_function" "resume_ingestion" {
   runtime          = "python3.12"
   timeout          = 60
   memory_size      = 512
+  layers           = [aws_lambda_layer_version.pdf_processing.arn]
 
   reserved_concurrent_executions = var.reserved_concurrency
 
@@ -533,6 +570,7 @@ resource "aws_lambda_function" "ai_processing" {
   runtime          = "python3.12"
   timeout          = 300
   memory_size      = 512
+  layers           = [aws_lambda_layer_version.pdf_processing.arn]
 
   reserved_concurrent_executions = var.reserved_concurrency
 
@@ -586,9 +624,10 @@ resource "aws_lambda_function" "portfolio_generator" {
 
   environment {
     variables = {
-      PORTFOLIO_BUCKET = var.portfolio_bucket_name
-      DYNAMODB_TABLE   = var.dynamodb_table_name
-      ENVIRONMENT      = var.environment
+      PORTFOLIO_BUCKET           = var.portfolio_bucket_name
+      DYNAMODB_TABLE             = var.dynamodb_table_name
+      CLOUDFRONT_DISTRIBUTION_ID = var.cloudfront_distribution_id
+      ENVIRONMENT                = var.environment
     }
   }
 
@@ -897,7 +936,39 @@ resource "aws_lambda_function" "patch_portfolio" {
 }
 
 # =============================================================================
-# 11. AI ENHANCE PORTFOLIO LAMBDA
+# 11. PUBLISH PORTFOLIO LAMBDA
+# POST /portfolio/{userId}/publish — triggers live (published) rebuild.
+# Reuses the portfolio_edit IAM role — same DynamoDB + Lambda invoke permissions.
+# =============================================================================
+
+resource "aws_lambda_function" "publish_portfolio" {
+  filename         = data.archive_file.get_portfolio.output_path
+  function_name    = "${var.name_prefix}-publish-portfolio"
+  role             = aws_iam_role.portfolio_edit.arn
+  handler          = "publish_portfolio.lambda_handler"
+  source_code_hash = data.archive_file.get_portfolio.output_base64sha256
+  runtime          = "python3.12"
+  timeout          = var.timeout
+  memory_size      = var.memory_size
+
+  reserved_concurrent_executions = var.reserved_concurrency
+
+  environment {
+    variables = {
+      PORTFOLIO_LAMBDA_NAME = "${var.name_prefix}-portfolio-generator"
+      ALLOWED_ORIGIN        = var.allowed_origin
+      ENVIRONMENT           = var.environment
+    }
+  }
+
+  tags = merge(var.tags, {
+    Name     = "${var.name_prefix}-publish-portfolio"
+    Function = "Publish portfolio draft to live"
+  })
+}
+
+# =============================================================================
+# 12. AI ENHANCE PORTFOLIO LAMBDA
 # POST /portfolio/{userId}/ai-enhance — returns AI-generated field suggestion.
 # Needs: dynamodb:GetItem on USER#* keys, secretsmanager:GetSecretValue (OpenAI).
 # Does NOT write to DynamoDB or invoke portfolio generator — suggestion only.
@@ -972,5 +1043,186 @@ resource "aws_lambda_function" "ai_enhance_portfolio" {
   tags = merge(var.tags, {
     Name     = "${var.name_prefix}-ai-enhance-portfolio"
     Function = "AI portfolio field enhancement - suggestion only"
+  })
+}
+
+# =============================================================================
+# INTERVIEW AGENT LAMBDAS
+# POST /interview/start   — create session, generate first question
+# POST /interview/answer  — evaluate answer, return feedback + next question
+# POST /interview/exit    — stop session, generate report
+# GET  /interview/{sessionId}/report — fetch final report
+# Needs: dynamodb:Query+GetItem+PutItem+UpdateItem on USER#* keys,
+#        secretsmanager:GetSecretValue (OpenAI)
+# =============================================================================
+
+resource "aws_iam_role" "interview" {
+  name               = "${var.name_prefix}-interview-role"
+  assume_role_policy = data.aws_iam_policy_document.lambda_assume_role.json
+  tags               = var.tags
+}
+
+resource "aws_iam_role_policy" "interview_logs" {
+  name   = "cloudwatch-logs"
+  role   = aws_iam_role.interview.id
+  policy = data.aws_iam_policy_document.cloudwatch_logs.json
+}
+
+resource "aws_iam_role_policy" "interview_dynamodb" {
+  name = "dynamodb-interview-sessions"
+  role = aws_iam_role.interview.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Sid    = "InterviewSessionOps"
+      Effect = "Allow"
+      Action = [
+        "dynamodb:GetItem",
+        "dynamodb:PutItem",
+        "dynamodb:UpdateItem",
+        "dynamodb:Query",
+      ]
+      Resource = [
+        var.dynamodb_table_arn,
+        "${var.dynamodb_table_arn}/index/*",
+      ]
+      Condition = {
+        "ForAllValues:StringLike" = {
+          "dynamodb:LeadingKeys" = ["USER#*"]
+        }
+      }
+    }]
+  })
+}
+
+resource "aws_iam_role_policy" "interview_secrets" {
+  name = "secrets-openai"
+  role = aws_iam_role.interview.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Sid    = "ReadOpenAISecret"
+      Effect = "Allow"
+      Action = ["secretsmanager:GetSecretValue"]
+      Resource = "arn:aws:secretsmanager:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:secret:${var.openai_api_key_secret_name}*"
+    }]
+  })
+}
+
+data "archive_file" "interview" {
+  type        = "zip"
+  source_dir  = "${path.module}/../../../src/lambdas/interview"
+  output_path = "${path.module}/../../../dist/lambdas/interview.zip"
+}
+
+resource "aws_lambda_function" "interview_start" {
+  filename         = data.archive_file.interview.output_path
+  function_name    = "${var.name_prefix}-interview-start"
+  role             = aws_iam_role.interview.arn
+  handler          = "start.lambda_handler"
+  source_code_hash = data.archive_file.interview.output_base64sha256
+  runtime          = "python3.12"
+  timeout          = 60
+  memory_size      = 512
+  layers           = [aws_lambda_layer_version.pdf_processing.arn]
+
+  reserved_concurrent_executions = var.reserved_concurrency
+
+  environment {
+    variables = {
+      DYNAMODB_TABLE     = var.dynamodb_table_name
+      OPENAI_SECRET_NAME = var.openai_api_key_secret_name
+      ALLOWED_ORIGIN     = var.allowed_origin
+      ENVIRONMENT        = var.environment
+    }
+  }
+
+  tags = merge(var.tags, {
+    Name     = "${var.name_prefix}-interview-start"
+    Function = "Interview agent - start session"
+  })
+}
+
+resource "aws_lambda_function" "interview_answer" {
+  filename         = data.archive_file.interview.output_path
+  function_name    = "${var.name_prefix}-interview-answer"
+  role             = aws_iam_role.interview.arn
+  handler          = "answer.lambda_handler"
+  source_code_hash = data.archive_file.interview.output_base64sha256
+  runtime          = "python3.12"
+  timeout          = 60
+  memory_size      = 512
+  layers           = [aws_lambda_layer_version.pdf_processing.arn]
+
+  reserved_concurrent_executions = var.reserved_concurrency
+
+  environment {
+    variables = {
+      DYNAMODB_TABLE     = var.dynamodb_table_name
+      OPENAI_SECRET_NAME = var.openai_api_key_secret_name
+      ALLOWED_ORIGIN     = var.allowed_origin
+      ENVIRONMENT        = var.environment
+    }
+  }
+
+  tags = merge(var.tags, {
+    Name     = "${var.name_prefix}-interview-answer"
+    Function = "Interview agent - evaluate answer"
+  })
+}
+
+resource "aws_lambda_function" "interview_exit" {
+  filename         = data.archive_file.interview.output_path
+  function_name    = "${var.name_prefix}-interview-exit"
+  role             = aws_iam_role.interview.arn
+  handler          = "exit.lambda_handler"
+  source_code_hash = data.archive_file.interview.output_base64sha256
+  runtime          = "python3.12"
+  timeout          = 30
+  memory_size      = 256
+  layers           = [aws_lambda_layer_version.pdf_processing.arn]
+
+  reserved_concurrent_executions = var.reserved_concurrency
+
+  environment {
+    variables = {
+      DYNAMODB_TABLE     = var.dynamodb_table_name
+      OPENAI_SECRET_NAME = var.openai_api_key_secret_name
+      ALLOWED_ORIGIN     = var.allowed_origin
+      ENVIRONMENT        = var.environment
+    }
+  }
+
+  tags = merge(var.tags, {
+    Name     = "${var.name_prefix}-interview-exit"
+    Function = "Interview agent - exit session and generate report"
+  })
+}
+
+resource "aws_lambda_function" "interview_report" {
+  filename         = data.archive_file.interview.output_path
+  function_name    = "${var.name_prefix}-interview-report"
+  role             = aws_iam_role.interview.arn
+  handler          = "report.lambda_handler"
+  source_code_hash = data.archive_file.interview.output_base64sha256
+  runtime          = "python3.12"
+  timeout          = 10
+  memory_size      = 256
+  layers           = [aws_lambda_layer_version.pdf_processing.arn]
+
+  reserved_concurrent_executions = var.reserved_concurrency
+
+  environment {
+    variables = {
+      DYNAMODB_TABLE     = var.dynamodb_table_name
+      OPENAI_SECRET_NAME = var.openai_api_key_secret_name
+      ALLOWED_ORIGIN     = var.allowed_origin
+      ENVIRONMENT        = var.environment
+    }
+  }
+
+  tags = merge(var.tags, {
+    Name     = "${var.name_prefix}-interview-report"
+    Function = "Interview agent - fetch final report"
   })
 }

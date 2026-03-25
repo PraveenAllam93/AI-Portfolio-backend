@@ -149,3 +149,45 @@ output "ai_enhance_portfolio_name" {
   value       = aws_lambda_function.ai_enhance_portfolio.function_name
 }
 
+# Interview Agent Lambdas
+output "interview_start_arn" {
+  value = aws_lambda_function.interview_start.arn
+}
+output "interview_start_invoke_arn" {
+  value = aws_lambda_function.interview_start.invoke_arn
+}
+output "interview_answer_arn" {
+  value = aws_lambda_function.interview_answer.arn
+}
+output "interview_answer_invoke_arn" {
+  value = aws_lambda_function.interview_answer.invoke_arn
+}
+output "interview_exit_arn" {
+  value = aws_lambda_function.interview_exit.arn
+}
+output "interview_exit_invoke_arn" {
+  value = aws_lambda_function.interview_exit.invoke_arn
+}
+output "interview_report_arn" {
+  value = aws_lambda_function.interview_report.arn
+}
+output "interview_report_invoke_arn" {
+  value = aws_lambda_function.interview_report.invoke_arn
+}
+
+
+# Publish Portfolio Lambda
+output "publish_portfolio_arn" {
+  description = "ARN of the publish portfolio Lambda"
+  value       = aws_lambda_function.publish_portfolio.arn
+}
+
+output "publish_portfolio_invoke_arn" {
+  description = "Invoke ARN of the publish portfolio Lambda"
+  value       = aws_lambda_function.publish_portfolio.invoke_arn
+}
+
+output "publish_portfolio_name" {
+  description = "Name of the publish portfolio Lambda"
+  value       = aws_lambda_function.publish_portfolio.function_name
+}

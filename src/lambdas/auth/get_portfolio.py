@@ -5,10 +5,19 @@ API endpoint to retrieve portfolio data for a user.
 
 import json
 import os
+import decimal
 import boto3
 
 dynamodb = boto3.resource('dynamodb')
 DYNAMODB_TABLE = os.environ.get('DYNAMODB_TABLE')
+
+
+class _DecimalEncoder(json.JSONEncoder):
+    """DynamoDB returns numeric types as Decimal; convert to int/float for JSON."""
+    def default(self, obj):
+        if isinstance(obj, decimal.Decimal):
+            return int(obj) if obj % 1 == 0 else float(obj)
+        return super().default(obj)
 
 # ---------------------------------------------------------------------------
 # Structured logger — outputs JSON, captured by CloudWatch Logs
@@ -83,9 +92,13 @@ def lambda_handler(event, context):
             'portfolioPath': item.get('portfolioPath'),
             'parsedData': item.get('parsedData'),
             'portfolioContent': item.get('portfolioContent'),
+            'category': item.get('category', 'software_engineer'),
+            'templateId': item.get('templateId', 'minimal'),
             'version': item.get('version'),
             'createdAt': item.get('createdAt'),
             'updatedAt': item.get('updatedAt'),
+            'sectionOrder': item.get('sectionOrder'),
+            'hiddenSections': item.get('hiddenSections'),
         })
 
     except Exception as e:
@@ -108,5 +121,5 @@ def _response(status_code, body):
             'Access-Control-Allow-Headers': 'Content-Type,Authorization',
             'X-Content-Type-Options': 'nosniff',
         },
-        'body': json.dumps(body),
+        'body': json.dumps(body, cls=_DecimalEncoder),
     }

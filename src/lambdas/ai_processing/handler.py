@@ -78,8 +78,11 @@ def lambda_handler(event, context):
 
             api_key = _get_openai_key()
 
-            parsed_data = _parse_resume_with_openai(
-                resume_text, api_key, correlation_id
+            category = message.get('category', 'software_engineer')
+            template_id = message.get('templateId', 'minimal')
+
+            parsed_data, portfolio_content = _process_resume_with_openai(
+                resume_text, api_key, correlation_id, category
             )
 
             if not parsed_data:
@@ -94,17 +97,13 @@ def lambda_handler(event, context):
                 })
                 continue
 
-            portfolio_content = _generate_portfolio_content(
-                parsed_data, api_key, correlation_id
-            )
-
             _update_status(user_id, upload_id, 'AI_COMPLETE', {
                 'parsedData': json.dumps(parsed_data),
                 'portfolioContent': json.dumps(portfolio_content),
             })
 
             _trigger_portfolio_generation(
-                user_id, upload_id, parsed_data, portfolio_content
+                user_id, upload_id, parsed_data, portfolio_content, category, template_id
             )
 
             _log_info(
@@ -125,11 +124,25 @@ def lambda_handler(event, context):
                 error=str(e),
             )
             if user_id and upload_id:
-                _update_status(user_id, upload_id, 'AI_FAILED', {
-                    # Generic message only — real error is in CloudWatch logs
-                    'aiError': 'AI processing failed. Please try again.',
-                })
-            raise
+                try:
+                    _update_status(user_id, upload_id, 'AI_FAILED', {
+                        # Generic message only — real error is in CloudWatch logs
+                        'aiError': 'AI processing failed. Please try again.',
+                    })
+                    # Status updated to terminal — do NOT raise.
+                    # Raising would cause SQS to retry, which resets status back
+                    # to AI_PROCESSING on the next attempt, creating an infinite loop.
+                except Exception as db_err:
+                    _log_error(
+                        "Failed to update AI_FAILED status",
+                        correlationId=correlation_id,
+                        userId=user_id,
+                        uploadId=upload_id,
+                        error=str(db_err),
+                    )
+                    raise  # Only raise if we couldn't mark it failed
+            else:
+                raise  # Can't identify the record — let SQS route to DLQ
 
     return {'statusCode': 200, 'body': 'Processing complete'}
 
@@ -150,53 +163,43 @@ def _get_openai_key():
     return _openai_api_key
 
 
-def _parse_resume_with_openai(
-    resume_text: str, api_key: str, correlation_id: str
-) -> dict:
-    """Parse resume text using OpenAI API."""
+def _process_resume_with_openai(
+    resume_text: str, api_key: str, correlation_id: str, category: str = 'software_engineer'
+) -> tuple[dict | None, dict]:
+    """Parse resume AND generate portfolio content in a single OpenAI call."""
     try:
         import urllib.request
+        from resume_models import get_category_config
 
-        prompt = f"""Parse the following resume and extract structured information.
-Return a JSON object with the following structure:
+        config = get_category_config(category)
+        schema = json.dumps(config['schema_json'], indent=2)
+        system_instruction = config['instruction']
+
+        prompt = f"""You have two tasks. Process the resume below and return a single JSON object with exactly two top-level keys: "parsed" and "portfolio".
+
+TASK 1 — "parsed": Extract structured resume data matching this JSON Schema exactly:
+{schema}
+
+TASK 2 — "portfolio": Generate engaging portfolio website content:
 {{
-    "name": "Full Name",
-    "title": "Professional Title",
-    "email": "email@example.com",
-    "phone": "phone number",
-    "location": "City, Country",
-    "summary": "Professional summary (2-3 sentences)",
-    "skills": ["skill1", "skill2"],
-    "experience": [
+    "headline": "A compelling one-line professional headline",
+    "bio": "An engaging 3-4 sentence bio for the about section",
+    "skillCategories": {{
+        "category_name": ["skill1", "skill2"]
+    }},
+    "experienceHighlights": [
         {{
-            "company": "Company Name",
-            "title": "Job Title",
-            "duration": "Start - End",
-            "description": "Brief description",
-            "highlights": ["achievement1", "achievement2"]
+            "title": "Role at Company",
+            "impact": "Key achievement or impact statement"
         }}
     ],
-    "education": [
-        {{
-            "institution": "University Name",
-            "degree": "Degree Name",
-            "field": "Field of Study",
-            "year": "Graduation Year"
-        }}
-    ],
-    "certifications": ["cert1", "cert2"],
-    "languages": ["language1"],
-    "links": {{
-        "linkedin": "url",
-        "github": "url",
-        "portfolio": "url"
-    }}
+    "uniqueValue": "What makes this person unique (2 sentences)"
 }}
 
 Resume text:
 {resume_text[:8000]}
 
-Return ONLY the JSON object, no additional text."""
+Return ONLY the JSON object with "parsed" and "portfolio" keys. No additional text."""
 
         request_body = json.dumps({
             "model": "gpt-4o-mini",
@@ -204,14 +207,15 @@ Return ONLY the JSON object, no additional text."""
                 {
                     "role": "system",
                     "content": (
-                        "You are a resume parser. Extract information "
-                        "accurately and return valid JSON only."
+                        f"{system_instruction} "
+                        "You are also a professional portfolio content writer. "
+                        "Return valid JSON only."
                     ),
                 },
                 {"role": "user", "content": prompt},
             ],
-            "temperature": 0.1,
-            "max_tokens": 2000,
+            "temperature": 0.3,
+            "max_tokens": 3500,
         }).encode('utf-8')
 
         req = urllib.request.Request(
@@ -234,91 +238,19 @@ Return ONLY the JSON object, no additional text."""
             if content.startswith('json'):
                 content = content[4:]
 
-        return json.loads(content.strip())
+        combined = json.loads(content.strip())
+        parsed_data = combined.get('parsed')
+        portfolio_content = combined.get('portfolio', {})
+
+        return parsed_data, portfolio_content
 
     except Exception as e:
         _log_error(
-            "OpenAI parsing error",
+            "OpenAI processing error",
             correlationId=correlation_id,
             error=str(e),
         )
-        return None
-
-
-def _generate_portfolio_content(
-    parsed_data: dict, api_key: str, correlation_id: str
-) -> dict:
-    """Generate enhanced portfolio content using OpenAI."""
-    try:
-        import urllib.request
-
-        prompt = f"""Based on this parsed resume data, generate enhanced portfolio content.
-Create engaging, professional descriptions for a portfolio website.
-
-Input data:
-{json.dumps(parsed_data, indent=2)}
-
-Return a JSON object with:
-{{
-    "headline": "A compelling one-line headline",
-    "bio": "An engaging 3-4 sentence bio for the about section",
-    "skillCategories": {{
-        "category1": ["skill1", "skill2"]
-    }},
-    "experienceHighlights": [
-        {{
-            "title": "Role at Company",
-            "impact": "Key achievement or impact statement"
-        }}
-    ],
-    "uniqueValue": "What makes this person unique (2 sentences)"
-}}
-
-Return ONLY the JSON object."""
-
-        request_body = json.dumps({
-            "model": "gpt-4o-mini",
-            "messages": [
-                {
-                    "role": "system",
-                    "content": (
-                        "You are a professional portfolio content writer."
-                    ),
-                },
-                {"role": "user", "content": prompt},
-            ],
-            "temperature": 0.7,
-            "max_tokens": 1500,
-        }).encode('utf-8')
-
-        req = urllib.request.Request(
-            'https://api.openai.com/v1/chat/completions',
-            data=request_body,
-            headers={
-                'Authorization': f'Bearer {api_key}',
-                'Content-Type': 'application/json',
-            },
-        )
-
-        with urllib.request.urlopen(req, timeout=60) as resp:
-            result = json.loads(resp.read().decode('utf-8'))
-
-        content = result['choices'][0]['message']['content']
-
-        if content.startswith('```'):
-            content = content.split('```')[1]
-            if content.startswith('json'):
-                content = content[4:]
-
-        return json.loads(content.strip())
-
-    except Exception as e:
-        _log_error(
-            "Portfolio content generation error",
-            correlationId=correlation_id,
-            error=str(e),
-        )
-        return {}
+        return None, {}
 
 
 def _trigger_portfolio_generation(
@@ -326,6 +258,8 @@ def _trigger_portfolio_generation(
     upload_id: str,
     parsed_data: dict,
     portfolio_content: dict,
+    category: str = 'software_engineer',
+    template_id: str = 'minimal',
 ) -> None:
     """Store portfolio data and invoke portfolio generator Lambda."""
     table = dynamodb.Table(DYNAMODB_TABLE)
@@ -334,12 +268,19 @@ def _trigger_portfolio_generation(
         'SK': 'PORTFOLIO#current',
         'userId': user_id,
         'uploadId': upload_id,
+        'category': category,
+        'templateId': template_id,
         'parsedData': parsed_data,
         'portfolioContent': portfolio_content,
         'version': 1,
         'createdAt': datetime.now(timezone.utc).isoformat(),
         'status': 'GENERATING',
     })
+
+    # Advance the upload record to GENERATING so the frontend progresses to step 4.
+    # This must happen BEFORE invoking the portfolio Lambda to avoid a race condition
+    # where the Lambda completes and sets COMPLETE before we set GENERATING.
+    _update_status(user_id, upload_id, 'GENERATING')
 
     if PORTFOLIO_LAMBDA_NAME:
         lambda_client.invoke(

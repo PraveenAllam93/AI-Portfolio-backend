@@ -96,6 +96,19 @@ def lambda_handler(event, context):
             )
             return {'statusCode': 400, 'body': 'Missing uploadId metadata'}
 
+        # Read category and templateId from the DynamoDB UPLOAD record.
+        table = dynamodb.Table(DYNAMODB_TABLE)
+        upload_record = table.get_item(
+            Key={
+                'PK': f'USER#{user_id}',
+                'SK': f'UPLOAD#{upload_id}',
+            },
+            ProjectionExpression='category, templateId',
+        )
+        upload_item = upload_record.get('Item', {})
+        category = upload_item.get('category', 'software_engineer')
+        template_id = upload_item.get('templateId', 'minimal')
+
         _update_status(user_id, upload_id, 'EXTRACTING_TEXT')
 
         response = s3_client.get_object(Bucket=bucket, Key=key)
@@ -141,6 +154,8 @@ def lambda_handler(event, context):
                 'resumeText': text,
                 'filename': filename,
                 's3Key': key,
+                'category': category,
+                'templateId': template_id,
                 'timestamp': datetime.now(timezone.utc).isoformat(),
             }),
             MessageAttributes={
@@ -151,6 +166,10 @@ def lambda_handler(event, context):
                 'uploadId': {
                     'DataType': 'String',
                     'StringValue': upload_id,
+                },
+                'category': {
+                    'DataType': 'String',
+                    'StringValue': category,
                 },
             },
         )

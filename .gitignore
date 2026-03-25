@@ -246,3 +246,9 @@ src/lambdas/*/typing_extensions*
 learnings/
 scripts/
 docs/
+
+# Local installer files
+Miniconda3-latest-Linux-x86_64.sh
+awscliv2.zip
+aws/
+dist/

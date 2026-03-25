@@ -1,0 +1,20 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(wsl -e bash -c \"cd /home/prudvi/projects/AI-Portfolio-backend/terraform && terraform init\")",
+      "Bash(wsl.exe -d Ubuntu -- bash -c \"cd /home/prudvi/projects/AI-Portfolio-backend/terraform && terraform init\")",
+      "Bash(wsl.exe -d Ubuntu -- bash -c \"aws logs tail /aws/lambda/ai-portfolio-dev-resume-ingestion --since 30m --format short 2>&1 | tail -50\")",
+      "Bash(\"\\\\wsl.localhost\\\\Ubuntu\\\\home\\\\prudvi\\\\projects\\\\AI-Portfolio-backend\\\\terraform\\\\modules\\\\lambda\\\\outputs.tf\":*)",
+      "Bash(\"\\\\wsl.localhost\\\\Ubuntu\\\\home\\\\prudvi\\\\projects\\\\AI-Portfolio-backend\\\\terraform\\\\modules\\\\api-gateway\\\\variables.tf\":*)",
+      "Bash(wsl python3 -c \"print\\(''hello''\\)\")",
+      "Bash(wsl --distribution Ubuntu -e python3 -c \":*)",
+      "Bash(terraform validate)",
+      "Bash(wsl --distribution:*)",
+      "Bash(terraform apply -lock=false -auto-approve)",
+      "Bash(wsl -d Ubuntu -- ls /home/prudvi/projects/AI-Portfolio-frontend/src/routes/api/portfolio/)",
+      "Bash(cmd /c \"dir \\\\wsl.localhost\\\\Ubuntu\\\\home\\\\prudvi\\\\projects\\\\AI-Portfolio-frontend\\\\src\\\\routes\\\\api\\\\portfolio\")",
+      "Bash(npm install svelte-dnd-action)",
+      "Bash(python3:*)"
+    ]
+  }
+}
