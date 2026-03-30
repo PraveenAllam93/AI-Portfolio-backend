@@ -66,17 +66,17 @@ _FIELD_LABELS: dict = {
     'uniqueValue': 'unique value proposition (2 sentences describing what makes this person stand out)',
 }
 
-# Shape B: array section item fields that can be AI-enhanced
+# Shape B: array section item fields that can be AI-enhanced.
+# Only fields where AI adds genuine value (narrative/impact text) are listed.
+# Removed: education.grade_or_score (factual number), certifications.name
+# (proper noun from issuing body), awards.title (org-assigned name),
+# investment_portfolios.performance_return (factual metric).
 _SECTION_ITEM_FIELDS: dict = {
-    'experience':            ['description', 'key_points'],
-    'projects':              ['description', 'responsibilities', 'measurable_outcomes'],
-    'achievements':          ['description'],
-    'certifications':        ['name'],
-    'education':             ['grade_or_score'],
-    'awards':                ['title'],
-    'campaigns':             ['performance_metrics'],
-    'financial_modeling':    ['outcome'],
-    'investment_portfolios': ['performance_return'],
+    'experience':         ['description', 'key_points'],
+    'projects':           ['description', 'responsibilities', 'measurable_outcomes'],
+    'achievements':       ['description'],
+    'campaigns':          ['performance_metrics'],
+    'financial_modeling': ['outcome'],
 }
 
 # Shape C: context sections per category for skills enhancement
