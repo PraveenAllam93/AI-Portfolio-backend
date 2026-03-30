@@ -331,37 +331,109 @@ def _handle_section_enhance(body, path_user_id, instruction, correlation_id):
     return _enhance_item(section, item, enhance_field, instruction, path_user_id, item_index, correlation_id)
 
 
-def _enhance_item(section, item, enhance_field, instruction, path_user_id, item_index, correlation_id):
-    # Identity for context
-    identity_parts = []
-    for key in ('role', 'company', 'title', 'name', 'campaign_name', 'model_type', 'portfolio_type', 'degree'):
-        if item.get(key):
-            identity_parts.append(str(item[key]))
-    identity = ' -- '.join(identity_parts[:2]) if identity_parts else f'Item {item_index + 1}'
+# Human-readable labels for every item field shown as context to the LLM.
+_ITEM_FIELD_LABELS = {
+    # Experience
+    'role':                      'Role / Job Title',
+    'company':                   'Company',
+    'location':                  'Location',
+    'duration':                  'Duration',
+    'description':               'Description',
+    'key_points':                'Key Points',
+    'channels_managed':          'Channels Managed',
+    'financial_metrics_managed': 'Financial Metrics Managed',
+    # Projects
+    'title':                     'Project Title',
+    'responsibilities':          'Responsibilities',
+    'measurable_outcomes':       'Measurable Outcomes',
+    'tech_stack':                'Tech Stack',
+    'github_repo':               'GitHub Repo',
+    'project_url':               'Project URL',
+    'project_category':          'Project Category',
+    'design_concept':            'Design Concept',
+    'software_used':             'Software Used',
+    # Education
+    'degree':                    'Degree',
+    'field_of_study':            'Field of Study',
+    'institution':               'Institution',
+    'year_range':                'Year Range',
+    'grade_or_score':            'Grade / Score',
+    # Certifications
+    'name':                      'Name',
+    'issuer':                    'Issuer',
+    'year':                      'Year',
+    # Achievements / Awards
+    'awarding_body':             'Awarding Body',
+    # Campaigns
+    'campaign_name':             'Campaign Name',
+    'campaign_type':             'Campaign Type',
+    'channels_used':             'Channels Used',
+    'budget':                    'Budget',
+    'performance_metrics':       'Performance Metrics',
+    # Finance
+    'model_type':                'Model Type',
+    'tools_used':                'Tools Used',
+    'outcome':                   'Outcome',
+    'portfolio_type':            'Portfolio Type',
+    'assets_under_management':   'Assets Under Management',
+    'performance_return':        'Performance / Return',
+}
 
+# Fields that are URLs or internal metadata — skip from context block
+_SKIP_CONTEXT_KEYS = {'certification_url', 'achievement_url', 'award_url', 'github_repo', 'project_url', 'start_date', 'end_date', 'is_current', 'start_year', 'end_year'}
+
+
+def _format_item_context(item, enhance_field):
+    """Return a labelled multi-line string of all non-empty item fields.
+    The field being enhanced is marked with >>> so the LLM knows what to update."""
+    lines = []
+    for key, value in item.items():
+        if key in _SKIP_CONTEXT_KEYS:
+            continue
+        if value is None or value == '' or value == []:
+            continue
+        label = _ITEM_FIELD_LABELS.get(key, key.replace('_', ' ').title())
+        if isinstance(value, list):
+            text = '\n    '.join(str(v) for v in value if v)
+            formatted = f"  {label}:\n    {text}"
+        else:
+            formatted = f"  {label}: {value}"
+        if key == enhance_field:
+            formatted = f">>> {formatted.lstrip()}"
+        lines.append(formatted)
+    return '\n'.join(lines)
+
+
+def _enhance_item(section, item, enhance_field, instruction, path_user_id, item_index, correlation_id):
     current_value = item.get(enhance_field, '')
     is_list_field = isinstance(current_value, list)
-    current_text = '\n'.join(str(v) for v in current_value) if is_list_field else str(current_value or '')
-    field_label = enhance_field.replace('_', ' ')
+    field_label = _ITEM_FIELD_LABELS.get(enhance_field, enhance_field.replace('_', ' ').title())
+
+    # Full item context — every non-empty field labelled, target field prefixed with >>>
+    item_context = _format_item_context(item, enhance_field)
 
     if is_list_field:
         prompt = (
             f"You are editing a portfolio website. "
-            f"Context: {section} item -- {identity}\n\n"
-            f"Current {field_label} (one point per line):\n{current_text[:1500]}\n\n"
+            f"Below is the full {section} item. "
+            f"The field marked with >>> is the one you must rewrite.\n\n"
+            f"{item_context[:2500]}\n\n"
             f"User instruction: {instruction}\n\n"
-            f"Rewrite the {field_label} as concise bullet points (one per line). "
-            f"Return ONLY the bullet points, one per line, no numbers, no dashes, no extra commentary."
+            f"Using the rest of the item as context, rewrite ONLY the \"{field_label}\" field "
+            f"as concise bullet points (one per line). "
+            f"Return ONLY the bullet points — one per line, no numbers, no dashes, no extra commentary."
         )
         max_tokens = 500
     else:
         prompt = (
             f"You are editing a portfolio website. "
-            f"Context: {section} item -- {identity}\n\n"
-            f"Current {field_label}:\n{current_text[:1500]}\n\n"
+            f"Below is the full {section} item. "
+            f"The field marked with >>> is the one you must rewrite.\n\n"
+            f"{item_context[:2500]}\n\n"
             f"User instruction: {instruction}\n\n"
-            f"Rewrite the {field_label} following the instruction precisely. "
-            f"Return ONLY the rewritten text -- no quotes, no explanation, no prefix."
+            f"Using the rest of the item as context, rewrite ONLY the \"{field_label}\" field "
+            f"following the instruction precisely. "
+            f"Return ONLY the rewritten text — no quotes, no explanation, no prefix."
         )
         max_tokens = 400
 
