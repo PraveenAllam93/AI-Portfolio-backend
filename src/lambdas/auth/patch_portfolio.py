@@ -62,6 +62,11 @@ _ALLOWED_FIELDS: dict[str, int] = {
     'uniqueValue': 500,
 }
 
+# Valid templateId values (top-level field, not nested in portfolioContent)
+_VALID_TEMPLATE_IDS: frozenset = frozenset({
+    'nebula', 'galaxy', 'codex', 'neon', 'circuit', 'navy-gold', 'cosmos',
+})
+
 # Shape B: array sections in parsedData -> max item count
 _ALLOWED_ARRAY_SECTIONS: dict[str, int] = {
     'experience': 50,
@@ -88,7 +93,7 @@ _ALLOWED_LIST_SECTIONS: dict[str, tuple] = {
 
 # Shape B: object sections in parsedData -> allowed top-level keys
 _ALLOWED_OBJECT_SECTIONS: dict[str, set] = {
-    'profile': {'full_name', 'headline', 'email', 'phone', 'location', 'summary', 'social_links'},
+    'profile': {'full_name', 'headline', 'email', 'phone', 'location', 'summary', 'social_links', 'profile_image'},
 }
 
 # Max character length for any single string value within an array item
@@ -217,13 +222,50 @@ def lambda_handler(event, context):
 
 
 def _handle_field_patch(body: dict, path_user_id: str, correlation_id: str) -> dict:
-    """Existing behaviour: patch a scalar key in portfolioContent."""
+    """Patch a scalar field — portfolioContent.* or top-level templateId."""
     field = body.get('field', '')
     value = body.get('value')
 
+    # templateId is stored at the record root, not inside portfolioContent
+    if field == 'templateId':
+        if not isinstance(value, str) or value not in _VALID_TEMPLATE_IDS:
+            return _response(400, {
+                'error': f'Invalid templateId. Must be one of: {", ".join(sorted(_VALID_TEMPLATE_IDS))}'
+            })
+        try:
+            table = dynamodb.Table(DYNAMODB_TABLE)
+            table.update_item(
+                Key={'PK': f'USER#{path_user_id}', 'SK': 'PORTFOLIO#current'},
+                UpdateExpression='SET #templateId = :value, #updatedAt = :updatedAt',
+                ConditionExpression='attribute_exists(#pk)',
+                ExpressionAttributeNames={
+                    '#pk': 'PK',
+                    '#templateId': 'templateId',
+                    '#updatedAt': 'updatedAt',
+                },
+                ExpressionAttributeValues={
+                    ':value': value,
+                    ':updatedAt': datetime.now(timezone.utc).isoformat(),
+                },
+            )
+            _trigger_rebuild(path_user_id)
+            _log('INFO', 'Portfolio template changed',
+                 correlationId=correlation_id,
+                 userId=path_user_id,
+                 templateId=value)
+            return _response(200, {'field': 'templateId', 'value': value, 'status': 'saved'})
+        except dynamodb.meta.client.exceptions.ConditionalCheckFailedException:
+            return _response(404, {'error': 'Portfolio not found. Generate a portfolio first.'})
+        except Exception as e:
+            _log('ERROR', 'Patch templateId error',
+                 correlationId=correlation_id,
+                 userId=path_user_id,
+                 error=str(e))
+            return _response(500, {'error': 'Internal server error'})
+
     if field not in _ALLOWED_FIELDS:
         return _response(400, {
-            'error': f'field must be one of: {", ".join(sorted(_ALLOWED_FIELDS))}'
+            'error': f'field must be one of: templateId, {", ".join(sorted(_ALLOWED_FIELDS))}'
         })
 
     if not isinstance(value, str):
@@ -415,6 +457,8 @@ def _handle_section_patch(body: dict, path_user_id: str, correlation_id: str) ->
                         for sk, sv in v.items()
                         if sk in _allowed_socials and isinstance(sv, str)
                     }
+                elif k == 'profile_image' and isinstance(v, str):
+                    sanitized_data[k] = v[:500]
                 # else: drop unexpected types silently
 
     except ValueError as ve:

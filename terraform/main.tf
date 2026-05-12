@@ -183,6 +183,7 @@ module "lambda" {
   # CloudFront: portfolio generator invalidates cache after each regeneration
   cloudfront_distribution_id  = module.cloudfront.distribution_id
   cloudfront_distribution_arn = module.cloudfront.distribution_arn
+  cloudfront_domain            = module.cloudfront.domain_name
 
   tags = local.common_tags
 }
@@ -219,6 +220,9 @@ module "api_gateway" {
   ai_enhance_portfolio_lambda_invoke_arn     = module.lambda.ai_enhance_portfolio_invoke_arn
   publish_portfolio_lambda_arn               = module.lambda.publish_portfolio_arn
   publish_portfolio_lambda_invoke_arn        = module.lambda.publish_portfolio_invoke_arn
+
+  get_image_upload_url_lambda_arn        = module.lambda.get_image_upload_url_arn
+  get_image_upload_url_lambda_invoke_arn = module.lambda.get_image_upload_url_invoke_arn
 
   interview_start_lambda_arn         = module.lambda.interview_start_arn
   interview_start_lambda_invoke_arn  = module.lambda.interview_start_invoke_arn

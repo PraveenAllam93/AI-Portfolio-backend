@@ -84,9 +84,9 @@ def lambda_handler(event, context):
         return _response(500, {'error': 'Internal server error'})
 
     try:
-        lambda_client.invoke(
+        resp = lambda_client.invoke(
             FunctionName=PORTFOLIO_LAMBDA_NAME,
-            InvocationType='Event',  # async — returns immediately
+            InvocationType='RequestResponse',
             Payload=json.dumps({
                 'userId': path_user_id,
                 'trigger': 'publish',
@@ -94,17 +94,24 @@ def lambda_handler(event, context):
             }),
         )
 
-        _log('INFO', 'Publish triggered',
+        if resp.get('FunctionError'):
+            _log('ERROR', 'Portfolio generator error',
+                 correlationId=correlation_id,
+                 userId=path_user_id,
+                 functionError=resp['FunctionError'])
+            return _response(500, {'error': 'Portfolio generation failed'})
+
+        _log('INFO', 'Portfolio published',
              correlationId=correlation_id,
              userId=path_user_id)
 
-        return _response(202, {
-            'message': 'Publishing started. Your live portfolio will update in ~15 seconds.',
+        return _response(200, {
+            'message': 'Portfolio published successfully.',
             'userId': path_user_id,
         })
 
     except Exception as e:
-        _log('ERROR', 'Publish trigger error',
+        _log('ERROR', 'Publish error',
              correlationId=correlation_id,
              userId=path_user_id,
              error=str(e))

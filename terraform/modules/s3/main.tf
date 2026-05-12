@@ -233,6 +233,19 @@ resource "aws_s3_bucket_public_access_block" "portfolio" {
   restrict_public_buckets = true
 }
 
+# CORS for direct image uploads via presigned PUT URL
+resource "aws_s3_bucket_cors_configuration" "portfolio" {
+  bucket = aws_s3_bucket.portfolio.id
+
+  cors_rule {
+    allowed_headers = ["*"]
+    allowed_methods = ["PUT"]
+    allowed_origins = ["*"]  # Restrict to frontend domain in production
+    expose_headers  = ["ETag"]
+    max_age_seconds = 3000
+  }
+}
+
 # Website configuration for portfolio bucket
 resource "aws_s3_bucket_website_configuration" "portfolio" {
   bucket = aws_s3_bucket.portfolio.id

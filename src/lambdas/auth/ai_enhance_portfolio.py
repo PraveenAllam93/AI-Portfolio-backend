@@ -201,6 +201,10 @@ def lambda_handler(event, context):
     except (json.JSONDecodeError, ValueError):
         return _response(400, {'error': 'Invalid JSON body'})
 
+    # Shape D: LLM-generated portfolio suggestions (no instruction needed)
+    if body.get('action') == 'analyze_and_suggest':
+        return _handle_analyze_and_suggest(body, path_user_id, correlation_id)
+
     instruction = str(body.get('instruction', '')).strip()
     if not instruction:
         return _response(400, {'error': 'instruction is required'})
@@ -214,7 +218,7 @@ def lambda_handler(event, context):
     if 'section' in body:
         return _handle_section_enhance(body, path_user_id, instruction, correlation_id)
 
-    return _response(400, {'error': 'Request must include either "field" or "section"'})
+    return _response(400, {'error': 'Request must include either "field", "section", or action="analyze_and_suggest"'})
 
 
 # ---------------------------------------------------------------------------
@@ -246,13 +250,26 @@ def _handle_field_enhance(body, path_user_id, instruction, correlation_id):
         max_chars = _FIELD_MAX_SEND_CHARS.get(field, 500)
         field_label = _FIELD_LABELS.get(field, field)
 
+        # Determine length constraint by field type
+        _field_length_guide = {
+            'bio':         '3–4 sentences (60–120 words)',
+            'headline':    '1 line, under 15 words',
+            'uniqueValue': '2–3 sentences (40–80 words)',
+        }
+        length_guide = _field_length_guide.get(field, '2–3 sentences')
+
         prompt = (
             f"You are editing a portfolio website. "
             f"The current {field_label} reads:\n\n"
             f'"{current_value[:max_chars]}"\n\n'
             f"User instruction: {instruction}\n\n"
-            f"Rewrite the {field_label} following the instruction precisely. "
-            f"Return ONLY the rewritten text -- no quotes, no explanation, no prefix."
+            f"Rewrite the {field_label} following the instruction precisely.\n\n"
+            f"Output rules (STRICT):\n"
+            f"- Length: {length_guide} — do not exceed this\n"
+            f"- Plain prose only — no bullet points, no numbered lists\n"
+            f"- No field labels or prefixes (do NOT start with \"{field_label}:\")\n"
+            f"- No quotes around the output\n"
+            f"- Start directly with the content"
         )
 
         api_key = _get_openai_key()
@@ -412,30 +429,53 @@ def _enhance_item(section, item, enhance_field, instruction, path_user_id, item_
     # Full item context — every non-empty field labelled, target field prefixed with >>>
     item_context = _format_item_context(item, enhance_field)
 
+    # Per-field length guidance
+    _list_field_counts = {
+        'key_points':           '4–6 points',
+        'responsibilities':     '3–5 points',
+        'measurable_outcomes':  '3–4 points',
+        'performance_metrics':  '3–5 points',
+    }
+    _prose_field_lengths = {
+        'description': '2–3 sentences (40–70 words maximum)',
+        'outcome':     '2–3 sentences (40–70 words maximum)',
+    }
+
     if is_list_field:
+        count_guide = _list_field_counts.get(enhance_field, '3–5 points')
         prompt = (
             f"You are editing a portfolio website. "
             f"Below is the full {section} item. "
             f"The field marked with >>> is the one you must rewrite.\n\n"
             f"{item_context[:2500]}\n\n"
             f"User instruction: {instruction}\n\n"
-            f"Using the rest of the item as context, rewrite ONLY the \"{field_label}\" field "
-            f"as concise bullet points (one per line). "
-            f"Return ONLY the bullet points — one per line, no numbers, no dashes, no extra commentary."
-        )
-        max_tokens = 500
-    else:
-        prompt = (
-            f"You are editing a portfolio website. "
-            f"Below is the full {section} item. "
-            f"The field marked with >>> is the one you must rewrite.\n\n"
-            f"{item_context[:2500]}\n\n"
-            f"User instruction: {instruction}\n\n"
-            f"Using the rest of the item as context, rewrite ONLY the \"{field_label}\" field "
-            f"following the instruction precisely. "
-            f"Return ONLY the rewritten text — no quotes, no explanation, no prefix."
+            f"Task: Rewrite ONLY the \"{field_label}\" field using the rest of the item as context.\n\n"
+            f"Output rules (STRICT):\n"
+            f"- Return exactly {count_guide}, one per line, no blank lines between them\n"
+            f"- No bullet symbols (no -, *, •), no numbers, no dashes at the start\n"
+            f"- No field labels or prefixes (do NOT start with \"{field_label}:\" or similar)\n"
+            f"- No surrounding explanation, commentary, or markdown\n"
+            f"- Start directly with the first point"
         )
         max_tokens = 400
+    else:
+        length_guide = _prose_field_lengths.get(enhance_field, '2–3 sentences (under 60 words)')
+        prompt = (
+            f"You are editing a portfolio website. "
+            f"Below is the full {section} item. "
+            f"The field marked with >>> is the one you must rewrite.\n\n"
+            f"{item_context[:2500]}\n\n"
+            f"User instruction: {instruction}\n\n"
+            f"Task: Rewrite ONLY the \"{field_label}\" field using the rest of the item as context.\n\n"
+            f"Output rules (STRICT):\n"
+            f"- Length: {length_guide} — do not exceed this\n"
+            f"- Plain prose only — no bullet points, no numbered lists\n"
+            f"- No field labels or prefixes (do NOT start with \"{field_label}:\" or similar)\n"
+            f"- No quotes around the output\n"
+            f"- No surrounding explanation, commentary, or markdown\n"
+            f"- Start directly with the content"
+        )
+        max_tokens = 300
 
     try:
         api_key = _get_openai_key()
@@ -526,4 +566,255 @@ def _enhance_skills(parsed_data, category, instruction, path_user_id, correlatio
              correlationId=correlation_id,
              userId=path_user_id,
              error=str(e))
+        return _response(500, {'error': 'Internal server error'})
+
+
+# ---------------------------------------------------------------------------
+# Shape D: LLM-generated portfolio suggestions
+# ---------------------------------------------------------------------------
+
+_SUGGESTIONS_SYSTEM_PROMPT = (
+    "You are a professional career coach and portfolio editor. "
+    "Analyze the user's portfolio data and return actionable, personalized suggestions "
+    "to improve it. Each suggestion must target a specific field in a specific section. "
+    "Be direct, specific, and context-aware — reference the actual content when explaining "
+    "what to fix. Return ONLY a valid JSON array — no explanation, no markdown."
+)
+
+# Maps section → the ONLY fields that can be AI-enhanced on the frontend.
+# Suggestions MUST use one of these field values or the enhancement will not work.
+_ENHANCEABLE_FIELDS = {
+    'experience':         ['description', 'key_points'],
+    'projects':           ['description', 'responsibilities', 'measurable_outcomes'],
+    'achievements':       ['description'],
+    'campaigns':          ['performance_metrics'],
+    'financial_modeling': ['outcome'],
+    # profile and skills are handled separately
+}
+
+_SUGGESTIONS_SCHEMA = (
+    'Return a JSON array of suggestion objects. Each object must have these exact keys:\n'
+    '  "id": unique string formatted as "<section>-<index>-<field>", e.g. "experience-0-key_points"\n'
+    '  "section": one of "profile", "experience", "projects", "skills", "achievements", "campaigns", "financial_modeling"\n'
+    '  "index": integer 0-based index within the section array. Omit (or null) only for profile and skills.\n'
+    '  "field": MUST be one of the allowed fields below for each section — do not invent other field names:\n'
+    '    - experience  → "description" or "key_points"\n'
+    '    - projects    → "description", "responsibilities", or "measurable_outcomes"\n'
+    '    - achievements → "description"\n'
+    '    - campaigns   → "performance_metrics"\n'
+    '    - financial_modeling → "outcome"\n'
+    '    - profile     → omit "field"; use "profileKey" instead\n'
+    '    - skills      → omit "field" and "index"\n'
+    '  "profileKey": for profile section ONLY — must be one of "bio", "headline", "uniqueValue"\n'
+    '  "label": short human-readable label, e.g. "Senior Engineer @ Acme" or "About"\n'
+    '  "sublabel": one specific, actionable improvement referencing the actual content, e.g. '
+    '"Your 3 key points lack metrics — add numbers to show impact"\n'
+    '  "instruction": a ready-to-use prompt string the user will send directly to the AI enhancer. '
+    'Make it specific to the actual content. Keep it under 200 characters.\n'
+    '  "priority": "high" (empty or very weak), "medium" (present but improvable), or "low" (minor polish)\n\n'
+    'Rules:\n'
+    '- Return 3–8 suggestions total\n'
+    '- Do not suggest improvements for fields that are already strong and detailed\n'
+    '- Do not return more than 2 suggestions for the same section item\n'
+    '- NEVER use a field name that is not in the allowed list above\n'
+    '- The "id" must match the pattern "<section>-<index>-<field>" exactly\n'
+    '- FIELD PURPOSE (critical — each field has a DIFFERENT purpose, do NOT suggest the same theme '
+    'across multiple fields of the same item):\n'
+    '    description: high-level "what/why/context" — the problem solved, scope, and overall role. '
+    'Suggest improving clarity, narrative, or context here.\n'
+    '    key_points (experience): specific achievements this person accomplished — suggest adding '
+    'numbers, percentages, and impact metrics.\n'
+    '    responsibilities (projects): specific technical actions taken — what was built, designed, '
+    'or owned. Suggest making them more concrete and action-verb driven.\n'
+    '    measurable_outcomes (projects): quantified results ONLY — % improvements, users impacted, '
+    'time/cost saved. Suggest if these are missing or vague.\n'
+    '- If an item already has description + responsibilities + measurable_outcomes, do NOT suggest '
+    'the same "add metrics" theme to all three. Pick the weakest one and suggest only that.'
+)
+
+
+def _fmt_list(items, indent='  '):
+    """Format a list field with each item on its own line for LLM readability."""
+    if not isinstance(items, list) or not items:
+        return f"{indent}(empty)"
+    return '\n'.join(f"{indent}- {str(item)}" for item in items if item)
+
+
+def _build_portfolio_summary(parsed_data, portfolio_content):
+    """Build a detailed text summary of the portfolio for the LLM.
+
+    Deliberately un-truncated for list fields so the LLM can judge quality
+    (e.g. whether key_points contain metrics, whether outcomes are present).
+    """
+    parts = []
+
+    profile = parsed_data.get('profile') or {}
+    parts.append("=== PROFILE ===")
+    parts.append(f"Name: {profile.get('full_name', '(missing)')}")
+    parts.append(f"Headline: {profile.get('headline', '(missing)')}")
+    parts.append(f"Email: {profile.get('email', '(missing)')}")
+    parts.append(f"Profile image: {'yes' if profile.get('profile_image') else 'no'}")
+    bio = (portfolio_content or {}).get('bio', '').strip()
+    uv = (portfolio_content or {}).get('uniqueValue', '').strip()
+    parts.append(f"Bio: {bio[:600] if bio else '(empty)'}")
+    parts.append(f"Unique value: {uv[:400] if uv else '(empty)'}")
+
+    for i, exp in enumerate((parsed_data.get('experience') or [])[:6]):
+        parts.append(f"\n=== EXPERIENCE {i} ===")
+        parts.append(f"Role: {exp.get('role', '')} @ {exp.get('company', '')}")
+        parts.append(f"Duration: {exp.get('duration', '')}")
+        desc = str(exp.get('description', '') or '')
+        parts.append(f"Description: {desc[:500] if desc else '(empty)'}")
+        kp = exp.get('key_points') or []
+        parts.append(f"Key points ({len(kp) if isinstance(kp, list) else 0}):")
+        parts.append(_fmt_list(kp))
+
+    for i, proj in enumerate((parsed_data.get('projects') or [])[:6]):
+        parts.append(f"\n=== PROJECT {i} ===")
+        parts.append(f"Title: {proj.get('title', '')}")
+        ts = proj.get('tech_stack') or []
+        parts.append(f"Tech stack: {', '.join(str(t) for t in ts) if isinstance(ts, list) else str(ts)}")
+        desc = str(proj.get('description', '') or '')
+        parts.append(f"Description: {desc[:500] if desc else '(empty)'}")
+        resp = proj.get('responsibilities') or []
+        parts.append(f"Responsibilities ({len(resp) if isinstance(resp, list) else 0}):")
+        parts.append(_fmt_list(resp))
+        out = proj.get('measurable_outcomes') or []
+        parts.append(f"Measurable outcomes ({len(out) if isinstance(out, list) else 0}):")
+        parts.append(_fmt_list(out))
+
+    skills = parsed_data.get('skills') or []
+    parts.append(f"\n=== SKILLS ({len(skills)} groups) ===")
+    for g in skills:
+        cat = g.get('category', '')
+        sk = g.get('skills') or []
+        skill_names = ', '.join(str(s) for s in sk) if isinstance(sk, list) else ''
+        parts.append(f"  {cat}: {skill_names if skill_names else '(empty)'}")
+
+    ach = parsed_data.get('achievements') or []
+    parts.append(f"\n=== ACHIEVEMENTS ({len(ach)} entries) ===")
+    for i, a in enumerate(ach[:5]):
+        parts.append(f"  [{i}] {a.get('title', '')} — {a.get('description', '')[:200]}")
+
+    edu = parsed_data.get('education') or []
+    parts.append(f"\n=== EDUCATION ({len(edu)} entries) ===")
+    certs = parsed_data.get('certifications') or []
+    parts.append(f"=== CERTIFICATIONS ({len(certs)} entries) ===")
+    for c in certs[:6]:
+        parts.append(f"  - {c.get('name', '')} ({c.get('issuer', '')})")
+
+    return '\n'.join(parts)
+
+
+# Profession-specific analysis guidance — focus only on sections relevant to each role.
+_CATEGORY_GUIDANCE = {
+    'software_engineer': (
+        "This is a SOFTWARE ENGINEER portfolio. Focus suggestions on: experience (description, key_points), "
+        "projects (description, responsibilities, measurable_outcomes), skills (technologies, frameworks, tools), "
+        "and achievements. Do NOT suggest campaigns, financial modeling, or design-specific fields."
+    ),
+    'designer': (
+        "This is a DESIGNER portfolio. Focus suggestions on: experience, projects (description, responsibilities, "
+        "measurable_outcomes), skills (design tools, software), awards, and achievements. "
+        "Do NOT suggest campaigns, financial modeling, or coding-heavy tech stacks."
+    ),
+    'marketing': (
+        "This is a MARKETING professional portfolio. Focus suggestions on: experience, campaigns "
+        "(performance_metrics), skills (marketing tools, platforms, channels), and achievements. "
+        "Do NOT suggest software engineering projects or financial modeling."
+    ),
+    'finance': (
+        "This is a FINANCE professional portfolio. Focus suggestions on: experience, financial_modeling "
+        "(outcome), investment_portfolios, skills (financial tools, models), certifications, and achievements. "
+        "Do NOT suggest software projects or marketing campaigns."
+    ),
+}
+_CATEGORY_GUIDANCE_DEFAULT = (
+    "Focus suggestions on experience, projects/work, skills, and achievements that are present in the data."
+)
+
+
+def _handle_analyze_and_suggest(body, path_user_id, correlation_id):
+    # Prefer client-sent state (always reflects what the user currently sees,
+    # even if auto-save hasn't flushed to DynamoDB yet). Fall back to DynamoDB.
+    client_parsed_data = body.get('parsedData')
+    client_portfolio_content = body.get('portfolioContent')
+    client_category = body.get('category', '')
+
+    if client_parsed_data and isinstance(client_parsed_data, dict):
+        parsed_data = client_parsed_data
+        portfolio_content = client_portfolio_content if isinstance(client_portfolio_content, dict) else {}
+        category = client_category or 'software_engineer'
+        _log('INFO', 'analyze_and_suggest using client-provided state',
+             correlationId=correlation_id, userId=path_user_id)
+    else:
+        try:
+            table = dynamodb.Table(DYNAMODB_TABLE)
+            result = table.get_item(
+                Key={'PK': f'USER#{path_user_id}', 'SK': 'PORTFOLIO#current'},
+                ProjectionExpression='parsedData, portfolioContent, #cat',
+                ExpressionAttributeNames={'#cat': 'category'},
+            )
+            if 'Item' not in result:
+                return _response(404, {'error': 'Portfolio not found.'})
+
+            parsed_data = result['Item'].get('parsedData') or {}
+            portfolio_content = result['Item'].get('portfolioContent') or {}
+            category = result['Item'].get('category', 'software_engineer')
+
+        except Exception as e:
+            _log('ERROR', 'analyze_and_suggest fetch error',
+                 correlationId=correlation_id, userId=path_user_id, error=str(e))
+            return _response(500, {'error': 'Internal server error'})
+
+    profession_guidance = _CATEGORY_GUIDANCE.get(category, _CATEGORY_GUIDANCE_DEFAULT)
+    summary = _build_portfolio_summary(parsed_data, portfolio_content)
+
+    prompt = (
+        f"Here is the user's complete portfolio data:\n\n"
+        f"{summary[:6000]}\n\n"
+        f"PROFESSION CONTEXT: {profession_guidance}\n\n"
+        f"Analysis instructions:\n"
+        f"1. CROSS-REFERENCE sections: Look for technologies, tools, frameworks, or skills that appear "
+        f"in experience descriptions or project tech stacks / descriptions but are NOT listed in the "
+        f"skills section. Suggest adding them to skills.\n"
+        f"2. PER-ITEM COMPLETENESS: For each experience item, check if description AND key_points are "
+        f"both present and substantive. For each project item, check if description, responsibilities, "
+        f"AND measurable_outcomes are all present and non-empty. Suggest the specific missing or weak field.\n"
+        f"3. CONTENT QUALITY: Read the actual text of key_points and responsibilities. If they lack "
+        f"specific numbers, metrics, or measurable results, flag them. Vague points like 'Worked on X' "
+        f"or 'Helped with Y' should be flagged for improvement.\n"
+        f"4. PROFILE QUALITY: If bio is generic or short, or uniqueValue is weak, suggest improvements.\n"
+        f"5. FIELD VARIETY: For any single section item, do NOT suggest the same improvement theme "
+        f"(e.g., 'add metrics') for multiple different fields. Each field has a distinct purpose — "
+        f"pick only the weakest or most missing field for each item.\n\n"
+        f"{_SUGGESTIONS_SCHEMA}"
+    )
+
+    try:
+        api_key = _get_openai_key()
+        raw = _call_openai(prompt, api_key, max_tokens=1500)
+
+        clean = raw.strip()
+        if clean.startswith('```'):
+            lines = clean.split('\n')
+            clean = '\n'.join(lines[1:-1] if lines[-1].strip() == '```' else lines[1:])
+
+        suggestions = json.loads(clean)
+        if not isinstance(suggestions, list):
+            raise ValueError('Expected JSON array')
+
+        _log('INFO', 'analyze_and_suggest complete',
+             correlationId=correlation_id, userId=path_user_id,
+             count=len(suggestions))
+
+        return _response(200, {'suggestions': suggestions})
+
+    except (json.JSONDecodeError, ValueError) as parse_err:
+        _log('ERROR', 'analyze_and_suggest parse error',
+             correlationId=correlation_id, userId=path_user_id, error=str(parse_err))
+        return _response(500, {'error': 'AI returned invalid format. Please try again.'})
+    except Exception as e:
+        _log('ERROR', 'analyze_and_suggest error',
+             correlationId=correlation_id, userId=path_user_id, error=str(e))
         return _response(500, {'error': 'Internal server error'})

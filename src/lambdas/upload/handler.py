@@ -32,7 +32,7 @@ DYNAMODB_TABLE = os.environ.get('DYNAMODB_TABLE')
 MAX_ACTIVE_UPLOADS = int(os.environ.get('MAX_ACTIVE_UPLOADS', 5))
 
 ALLOWED_CATEGORIES = {'software_engineer', 'designer', 'marketing', 'finance'}
-ALLOWED_TEMPLATES = {'minimal', 'modern', 'bold', 'creative', 'aurora', 'nebula', 'luxury', 'executive'}
+ALLOWED_TEMPLATES = {'minimal', 'modern', 'bold', 'creative', 'aurora', 'nebula', 'luxury', 'executive', 'galaxy', 'codex', 'neon', 'circuit', 'navy-gold', 'cosmos'}
 
 # Safe filename: block path separators, null bytes, and Windows reserved chars.
 # Allowlist approach was too strict (rejected spaces in names like "resume 1.pdf").

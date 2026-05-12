@@ -156,6 +156,11 @@ variable "cloudfront_distribution_arn" {
   type        = string
 }
 
+variable "cloudfront_domain" {
+  description = "Domain name of the CloudFront distribution (e.g. dxxxxxxx.cloudfront.net) used to construct public image URLs"
+  type        = string
+}
+
 # CORS
 variable "allowed_origin" {
   description = "CORS allowed origin for API responses (e.g. https://app.example.com)"

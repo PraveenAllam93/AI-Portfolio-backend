@@ -279,6 +279,10 @@ class Profile(BaseModel):
         description="Professional summary describing experience and expertise")
     social_links: Optional[SocialLinks] = Field(
         description="Professional profile links")
+    profile_image: Optional[str] = Field(
+        default=None,
+        description="URL of the profile/avatar photo"
+    )
 
 
 class SkillGroup(BaseModel):

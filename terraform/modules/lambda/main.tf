@@ -602,21 +602,21 @@ resource "aws_lambda_event_source_mapping" "ai_processing_sqs" {
 
 # -----------------------------------------------------------------------------
 # 5. PORTFOLIO GENERATOR
+# Node.js Lambda — built by build-portfolio-lambda.sh (esbuild bundle).
+# Run: bash build-portfolio-lambda.sh  before terraform apply.
 # -----------------------------------------------------------------------------
 
-data "archive_file" "portfolio_generator" {
-  type        = "zip"
-  source_dir  = "${path.module}/../../../src/lambdas/portfolio"
-  output_path = "${path.module}/../../../dist/lambdas/portfolio_generator.zip"
+locals {
+  portfolio_generator_zip = "${path.module}/../../../dist/lambdas/portfolio_generator.zip"
 }
 
 resource "aws_lambda_function" "portfolio_generator" {
-  filename         = data.archive_file.portfolio_generator.output_path
+  filename         = local.portfolio_generator_zip
   function_name    = "${var.name_prefix}-portfolio-generator"
   role             = aws_iam_role.portfolio_generator.arn
-  handler          = "handler.lambda_handler"
-  source_code_hash = data.archive_file.portfolio_generator.output_base64sha256
-  runtime          = "python3.12"
+  handler          = "index.lambdaHandler"
+  source_code_hash = filebase64sha256(local.portfolio_generator_zip)
+  runtime          = "nodejs22.x"
   timeout          = 60
   memory_size      = 256
 
@@ -1043,6 +1043,66 @@ resource "aws_lambda_function" "ai_enhance_portfolio" {
   tags = merge(var.tags, {
     Name     = "${var.name_prefix}-ai-enhance-portfolio"
     Function = "AI portfolio field enhancement - suggestion only"
+  })
+}
+
+# =============================================================================
+# IMAGE UPLOAD URL LAMBDA
+# POST /portfolio/{userId}/image-upload-url
+# Needs: s3:PutObject on portfolio bucket assets prefix (to sign presigned PUT)
+# =============================================================================
+
+resource "aws_iam_role" "get_image_upload_url" {
+  name               = "${var.name_prefix}-image-upload-url-role"
+  assume_role_policy = data.aws_iam_policy_document.lambda_assume_role.json
+  tags               = var.tags
+}
+
+resource "aws_iam_role_policy" "get_image_upload_url_logs" {
+  name   = "cloudwatch-logs"
+  role   = aws_iam_role.get_image_upload_url.id
+  policy = data.aws_iam_policy_document.cloudwatch_logs.json
+}
+
+resource "aws_iam_role_policy" "get_image_upload_url_s3" {
+  name = "s3-presign-portfolio-assets"
+  role = aws_iam_role.get_image_upload_url.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Sid      = "SignPresignedPutAssets"
+      Effect   = "Allow"
+      Action   = ["s3:PutObject"]
+      Resource = "${var.portfolio_bucket_arn}/*/assets/*"
+    }]
+  })
+}
+
+resource "aws_lambda_function" "get_image_upload_url" {
+  filename         = data.archive_file.get_portfolio.output_path
+  function_name    = "${var.name_prefix}-get-image-upload-url"
+  role             = aws_iam_role.get_image_upload_url.arn
+  handler          = "get_image_upload_url.lambda_handler"
+  source_code_hash = data.archive_file.get_portfolio.output_base64sha256
+  runtime          = "python3.12"
+  timeout          = var.timeout
+  memory_size      = var.memory_size
+
+  reserved_concurrent_executions = var.reserved_concurrency
+
+  environment {
+    variables = {
+      PORTFOLIO_BUCKET             = var.portfolio_bucket_name
+      CLOUDFRONT_DOMAIN            = var.cloudfront_domain
+      PRESIGNED_URL_EXPIRY_SECONDS = tostring(var.presigned_url_expiry_seconds)
+      ALLOWED_ORIGIN               = var.allowed_origin
+      ENVIRONMENT                  = var.environment
+    }
+  }
+
+  tags = merge(var.tags, {
+    Name     = "${var.name_prefix}-get-image-upload-url"
+    Function = "Generate presigned URL for portfolio image upload"
   })
 }
 

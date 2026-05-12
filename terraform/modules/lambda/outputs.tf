@@ -176,6 +176,22 @@ output "interview_report_invoke_arn" {
 }
 
 
+# Get Image Upload URL Lambda
+output "get_image_upload_url_arn" {
+  description = "ARN of the get image upload URL Lambda"
+  value       = aws_lambda_function.get_image_upload_url.arn
+}
+
+output "get_image_upload_url_invoke_arn" {
+  description = "Invoke ARN of the get image upload URL Lambda"
+  value       = aws_lambda_function.get_image_upload_url.invoke_arn
+}
+
+output "get_image_upload_url_name" {
+  description = "Name of the get image upload URL Lambda"
+  value       = aws_lambda_function.get_image_upload_url.function_name
+}
+
 # Publish Portfolio Lambda
 output "publish_portfolio_arn" {
   description = "ARN of the publish portfolio Lambda"

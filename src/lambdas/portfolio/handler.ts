@@ -1,0 +1,255 @@
+/**
+ * Lambda: Portfolio Generator (Node.js)
+ *
+ * Generates a static HTML portfolio from parsed resume data stored in DynamoDB.
+ * Uses the shared TypeScript templates (bundled at deploy time from the frontend repo)
+ * so the published output is pixel-identical to the editor preview.
+ *
+ * Security:
+ *   - publishMode=true strips EDITOR_SCRIPT and all contenteditable/data-path attrs
+ *   - CSP meta tag (script-src 'none') is injected into the <head> of published HTML
+ *   - All user data is HTML-escaped inside normalize() before template rendering
+ */
+
+import { DynamoDBClient, GetItemCommand, UpdateItemCommand } from '@aws-sdk/client-dynamodb';
+import { marshall, unmarshall } from '@aws-sdk/util-dynamodb';
+import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
+import { CloudFrontClient, CreateInvalidationCommand } from '@aws-sdk/client-cloudfront';
+import { renderPortfolio } from './templates/index';
+
+const dynamodb = new DynamoDBClient({});
+const s3 = new S3Client({});
+const cf = new CloudFrontClient({});
+
+const PORTFOLIO_BUCKET = process.env.PORTFOLIO_BUCKET!;
+const DYNAMODB_TABLE = process.env.DYNAMODB_TABLE!;
+const CLOUDFRONT_DISTRIBUTION_ID = process.env.CLOUDFRONT_DISTRIBUTION_ID ?? '';
+
+const DEFAULT_SECTION_ORDER = [
+	'experience',
+	'projects',
+	'skills',
+	'education',
+	'certifications',
+	'achievements',
+	'awards',
+	'campaigns',
+	'financial_modeling',
+	'investment_portfolios',
+	'design_philosophy',
+	'software_proficiency',
+];
+
+// ---------------------------------------------------------------------------
+// Structured logger — outputs JSON, captured by CloudWatch Logs
+// ---------------------------------------------------------------------------
+
+function log(level: string, message: string, extra: Record<string, unknown> = {}): void {
+	console.log(JSON.stringify({ level, function: 'portfolio_generator', message, ...extra }));
+}
+
+// ---------------------------------------------------------------------------
+// Lambda handler
+// ---------------------------------------------------------------------------
+
+interface LambdaContext {
+	awsRequestId: string;
+}
+
+interface LambdaEvent {
+	userId?: string;
+	uploadId?: string;
+	target?: string;
+	Records?: Array<{
+		eventName?: string;
+		dynamodb?: {
+			Keys?: { PK?: { S?: string } };
+		};
+	}>;
+}
+
+export async function lambdaHandler(event: LambdaEvent, context: LambdaContext): Promise<unknown> {
+	const correlationId = context?.awsRequestId ?? 'local';
+	let userId: string | undefined;
+	let uploadId: string | undefined;
+
+	try {
+		userId = event.userId;
+		uploadId = event.uploadId;
+
+		if (!userId && event.Records?.length) {
+			const record = event.Records[0];
+			if (record.eventName === 'INSERT' || record.eventName === 'MODIFY') {
+				const pkValue = record.dynamodb?.Keys?.PK?.S ?? '';
+				userId = pkValue.replace('USER#', '');
+			}
+		}
+
+		if (!userId) {
+			return { statusCode: 400, body: 'Missing userId' };
+		}
+
+		log('INFO', 'Portfolio generation started', { correlationId, userId, uploadId });
+
+		// Fetch portfolio data from DynamoDB
+		const getResult = await dynamodb.send(
+			new GetItemCommand({
+				TableName: DYNAMODB_TABLE,
+				Key: marshall({ PK: `USER#${userId}`, SK: 'PORTFOLIO#current' }),
+			})
+		);
+
+		if (!getResult.Item) {
+			log('ERROR', 'Portfolio data not found', { correlationId, userId });
+			return { statusCode: 404, body: 'Portfolio data not found' };
+		}
+
+		const item = unmarshall(getResult.Item) as Record<string, unknown>;
+
+		const parsedData = (item.parsedData ?? {}) as Record<string, unknown>;
+		const portfolioContent = (item.portfolioContent ?? {}) as Record<string, unknown>;
+		const category = (item.category as string | undefined) ?? 'software_engineer';
+		const templateId = (item.templateId as string | undefined) ?? 'neon';
+		const sectionOrder =
+			(item.sectionOrder as string[] | undefined) ?? DEFAULT_SECTION_ORDER;
+		const hiddenSections = (item.hiddenSections as string[] | undefined) ?? [];
+		const target = event.target ?? 'publish';
+		const version = (item.version as number | undefined) ?? 1;
+
+		// Render HTML using the shared frontend templates (publishMode=true)
+		const portfolioHtml = renderPortfolio(
+			templateId,
+			// eslint-disable-next-line @typescript-eslint/no-explicit-any
+			parsedData as any,
+			// eslint-disable-next-line @typescript-eslint/no-explicit-any
+			portfolioContent as any,
+			category,
+			sectionOrder,
+			hiddenSections,
+			true // publishMode — strips editor JS + editable attrs, injects CSP
+		);
+
+		const basePath = target === 'draft' ? `${userId}/draft` : `${userId}/v${version}`;
+
+		await s3.send(
+			new PutObjectCommand({
+				Bucket: PORTFOLIO_BUCKET,
+				Key: `${basePath}/index.html`,
+				Body: Buffer.from(portfolioHtml, 'utf-8'),
+				ContentType: 'text/html',
+				CacheControl: 'no-cache, max-age=0, s-maxage=0, must-revalidate',
+			})
+		);
+
+		const now = new Date().toISOString();
+
+		if (target !== 'draft') {
+			await dynamodb.send(
+				new UpdateItemCommand({
+					TableName: DYNAMODB_TABLE,
+					Key: marshall({ PK: `USER#${userId}`, SK: 'PORTFOLIO#current' }),
+					UpdateExpression:
+						'SET #status = :status, portfolioPath = :path, updatedAt = :updatedAt',
+					ExpressionAttributeNames: { '#status': 'status' },
+					ExpressionAttributeValues: marshall({
+						':status': 'PUBLISHED',
+						':path': basePath,
+						':updatedAt': now,
+					}),
+				})
+			);
+
+			if (uploadId) {
+				await dynamodb.send(
+					new UpdateItemCommand({
+						TableName: DYNAMODB_TABLE,
+						Key: marshall({ PK: `USER#${userId}`, SK: `UPLOAD#${uploadId}` }),
+						UpdateExpression:
+							'SET #status = :status, portfolioPath = :path, updatedAt = :updatedAt',
+						ExpressionAttributeNames: { '#status': 'status' },
+						ExpressionAttributeValues: marshall({
+							':status': 'COMPLETE',
+							':path': basePath,
+							':updatedAt': now,
+						}),
+					})
+				);
+			}
+
+			if (CLOUDFRONT_DISTRIBUTION_ID) {
+				try {
+					await cf.send(
+						new CreateInvalidationCommand({
+							DistributionId: CLOUDFRONT_DISTRIBUTION_ID,
+							InvalidationBatch: {
+								Paths: { Quantity: 1, Items: [`/${userId}/*`] },
+								CallerReference: correlationId,
+							},
+						})
+					);
+					log('INFO', 'CloudFront cache invalidated', {
+						correlationId,
+						userId,
+						path: `/${userId}/*`,
+					});
+				} catch (cfErr) {
+					// Non-fatal: portfolio is already written to S3.
+					// Cache will expire naturally; log for visibility.
+					log('ERROR', 'CloudFront invalidation failed (non-fatal)', {
+						correlationId,
+						userId,
+						error: String(cfErr),
+					});
+				}
+			}
+		}
+
+		log('INFO', 'Portfolio published', {
+			correlationId,
+			userId,
+			uploadId,
+			portfolioPath: basePath,
+		});
+
+		return {
+			statusCode: 200,
+			body: JSON.stringify({ path: basePath, status: 'PUBLISHED' }),
+		};
+	} catch (err) {
+		log('ERROR', 'Portfolio generation error', {
+			correlationId,
+			userId,
+			uploadId,
+			error: String(err),
+		});
+
+		// Mark the upload as FAILED so the frontend stops polling.
+		if (userId && uploadId) {
+			try {
+				await dynamodb.send(
+					new UpdateItemCommand({
+						TableName: DYNAMODB_TABLE,
+						Key: marshall({ PK: `USER#${userId}`, SK: `UPLOAD#${uploadId}` }),
+						UpdateExpression: 'SET #status = :status, #updatedAt = :updatedAt',
+						ExpressionAttributeNames: {
+							'#status': 'status',
+							'#updatedAt': 'updatedAt',
+						},
+						ExpressionAttributeValues: marshall({
+							':status': 'FAILED',
+							':updatedAt': new Date().toISOString(),
+						}),
+					})
+				);
+			} catch (dbErr) {
+				log('ERROR', 'Failed to mark upload as FAILED', {
+					correlationId,
+					userId,
+					uploadId,
+					error: String(dbErr),
+				});
+			}
+		}
+		throw err;
+	}
+}

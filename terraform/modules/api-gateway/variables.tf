@@ -135,3 +135,13 @@ variable "publish_portfolio_lambda_invoke_arn" {
   description = "Invoke ARN of the publish portfolio Lambda"
   type        = string
 }
+
+variable "get_image_upload_url_lambda_arn" {
+  description = "ARN of the get image upload URL Lambda"
+  type        = string
+}
+
+variable "get_image_upload_url_lambda_invoke_arn" {
+  description = "Invoke ARN of the get image upload URL Lambda"
+  type        = string
+}
