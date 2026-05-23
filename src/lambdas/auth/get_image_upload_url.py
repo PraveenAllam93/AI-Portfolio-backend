@@ -22,12 +22,21 @@ import json
 import os
 import uuid
 import boto3
+from botocore.config import Config
 from urllib.parse import unquote
 
-s3_client = boto3.client('s3')
+_AWS_REGION = os.environ.get('AWS_REGION', 'ap-south-1')
+s3_client = boto3.client(
+    's3',
+    region_name=_AWS_REGION,
+    endpoint_url=f'https://s3.{_AWS_REGION}.amazonaws.com',
+    config=Config(s3={'addressing_style': 'virtual'}),
+)
+dynamodb = boto3.resource('dynamodb')
 
 PORTFOLIO_BUCKET = os.environ.get('PORTFOLIO_BUCKET')
 CLOUDFRONT_DOMAIN = os.environ.get('CLOUDFRONT_DOMAIN')
+DYNAMODB_TABLE = os.environ.get('DYNAMODB_TABLE')
 PRESIGNED_URL_EXPIRY = int(os.environ.get('PRESIGNED_URL_EXPIRY_SECONDS', 300))
 ALLOWED_ORIGIN = os.environ.get('ALLOWED_ORIGIN', '*')
 
@@ -93,8 +102,25 @@ def lambda_handler(event, context):
     # Derive extension from MIME type (ignore client-provided extension for security)
     ext = MIME_TO_EXT[content_type]
 
+    # Resolve uploadId from the current portfolio record so images are stored
+    # under {userId}/{uploadId}/assets/ alongside the rest of that portfolio's files.
+    upload_id = None
+    try:
+        table = dynamodb.Table(DYNAMODB_TABLE)
+        result = table.get_item(
+            Key={'PK': f'USER#{path_user_id}', 'SK': 'PORTFOLIO#current'},
+            ProjectionExpression='uploadId',
+        )
+        upload_id = result.get('Item', {}).get('uploadId')
+    except Exception as e:
+        _log('WARNING', 'Could not fetch uploadId from portfolio record, using flat path',
+             correlationId=correlation_id, userId=path_user_id, error=str(e))
+
     image_id = str(uuid.uuid4())
-    s3_key = f"{path_user_id}/assets/{image_id}{ext}"
+    if upload_id:
+        s3_key = f"{path_user_id}/{upload_id}/assets/{image_id}{ext}"
+    else:
+        s3_key = f"{path_user_id}/assets/{image_id}{ext}"
 
     presigned_url = s3_client.generate_presigned_url(
         'put_object',

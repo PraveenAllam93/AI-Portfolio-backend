@@ -149,6 +149,22 @@ output "ai_enhance_portfolio_name" {
   value       = aws_lambda_function.ai_enhance_portfolio.function_name
 }
 
+# Add Custom Section Lambda
+output "add_custom_section_arn" {
+  description = "ARN of the add custom section Lambda"
+  value       = aws_lambda_function.add_custom_section.arn
+}
+
+output "add_custom_section_invoke_arn" {
+  description = "Invoke ARN of the add custom section Lambda"
+  value       = aws_lambda_function.add_custom_section.invoke_arn
+}
+
+output "add_custom_section_name" {
+  description = "Name of the add custom section Lambda"
+  value       = aws_lambda_function.add_custom_section.function_name
+}
+
 # Interview Agent Lambdas
 output "interview_start_arn" {
   value = aws_lambda_function.interview_start.arn
@@ -173,6 +189,12 @@ output "interview_report_arn" {
 }
 output "interview_report_invoke_arn" {
   value = aws_lambda_function.interview_report.invoke_arn
+}
+output "interview_sessions_arn" {
+  value = aws_lambda_function.interview_sessions.arn
+}
+output "interview_sessions_invoke_arn" {
+  value = aws_lambda_function.interview_sessions.invoke_arn
 }
 
 
@@ -206,4 +228,52 @@ output "publish_portfolio_invoke_arn" {
 output "publish_portfolio_name" {
   description = "Name of the publish portfolio Lambda"
   value       = aws_lambda_function.publish_portfolio.function_name
+}
+
+# Generate Project Image Lambda
+output "generate_project_image_arn" {
+  description = "ARN of the generate project image Lambda"
+  value       = aws_lambda_function.generate_project_image.arn
+}
+
+output "generate_project_image_invoke_arn" {
+  description = "Invoke ARN of the generate project image Lambda"
+  value       = aws_lambda_function.generate_project_image.invoke_arn
+}
+
+output "generate_project_image_name" {
+  description = "Name of the generate project image Lambda"
+  value       = aws_lambda_function.generate_project_image.function_name
+}
+
+# Cancel Upload Lambda
+output "cancel_upload_arn" {
+  value = aws_lambda_function.cancel_upload.arn
+}
+output "cancel_upload_invoke_arn" {
+  value = aws_lambda_function.cancel_upload.invoke_arn
+}
+
+# List Versions Lambda
+output "list_versions_arn" {
+  value = aws_lambda_function.list_versions.arn
+}
+output "list_versions_invoke_arn" {
+  value = aws_lambda_function.list_versions.invoke_arn
+}
+
+# Activate Version Lambda
+output "activate_version_arn" {
+  value = aws_lambda_function.activate_version.arn
+}
+output "activate_version_invoke_arn" {
+  value = aws_lambda_function.activate_version.invoke_arn
+}
+
+# Delete Version Lambda
+output "delete_version_arn" {
+  value = aws_lambda_function.delete_version.arn
+}
+output "delete_version_invoke_arn" {
+  value = aws_lambda_function.delete_version.invoke_arn
 }

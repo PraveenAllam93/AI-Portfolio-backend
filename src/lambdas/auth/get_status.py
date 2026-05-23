@@ -49,22 +49,25 @@ STATUS_MESSAGES = {
     'AI_PROCESSING': 'AI is analyzing your resume...',
     'AI_COMPLETE': 'AI analysis complete',
     'AI_FAILED': 'AI processing failed',
+    'INVALID_DOCUMENT': 'Document is not a resume',
     'GENERATING': 'Generating your portfolio...',
     'COMPLETE': 'Portfolio is ready!',
-    'FAILED': 'Processing failed'
+    'FAILED': 'Processing failed',
+    'CANCELLED': 'Upload cancelled',
 }
 
 # Terminal states — frontend should stop polling
-TERMINAL_STATES = {'COMPLETE', 'REJECTED', 'AI_FAILED', 'FAILED'}
+TERMINAL_STATES = {'COMPLETE', 'REJECTED', 'AI_FAILED', 'FAILED', 'INVALID_DOCUMENT', 'CANCELLED'}
 
-# Failure states — frontend can offer a retry
-FAILURE_STATES = {'REJECTED', 'AI_FAILED', 'FAILED'}
+# Failure states — frontend can offer a retry (CANCELLED is terminal but not a failure)
+FAILURE_STATES = {'REJECTED', 'AI_FAILED', 'FAILED', 'INVALID_DOCUMENT'}
 
 # Which pipeline stage each failure originated from
 FAILURE_STAGE = {
     'REJECTED': 'VALIDATION',
     'AI_FAILED': 'AI_PROCESSING',
     'FAILED': 'PROCESSING',
+    'INVALID_DOCUMENT': 'AI_PROCESSING',
 }
 
 # Approximate progress percentage per status (for progress bars)
@@ -80,7 +83,9 @@ STATUS_PROGRESS = {
     'COMPLETE': 100,
     'REJECTED': 15,
     'AI_FAILED': 60,
+    'INVALID_DOCUMENT': 60,
     'FAILED': 40,
+    'CANCELLED': 0,
 }
 
 
@@ -196,6 +201,10 @@ def _safe_failure_message(status: str) -> str:
     messages = {
         'REJECTED': 'Your file could not be validated. Please check that it is a valid PDF or DOCX resume.',
         'AI_FAILED': 'We were unable to process your resume with AI. Please try again.',
+        'INVALID_DOCUMENT': (
+            'The uploaded document does not appear to be a resume. '
+            'Please upload a resume (CV) in PDF or DOCX format.'
+        ),
         'FAILED': 'An error occurred while processing your resume. Please try again.',
     }
     return messages.get(status, 'Processing failed. Please try again.')

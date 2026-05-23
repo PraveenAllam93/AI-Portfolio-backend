@@ -243,6 +243,9 @@ src/lambdas/*/pypdf2*/
 src/lambdas/*/python_docx*/
 src/lambdas/*/typing_extensions*
 
+# Lambda layer installed packages (pip install --target src/layers/*/python)
+src/layers/*/python/
+
 learnings/
 scripts/
 docs/

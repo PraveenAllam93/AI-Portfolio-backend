@@ -87,6 +87,16 @@ variable "ai_enhance_portfolio_lambda_invoke_arn" {
   type        = string
 }
 
+variable "add_custom_section_lambda_arn" {
+  description = "ARN of the add custom section Lambda"
+  type        = string
+}
+
+variable "add_custom_section_lambda_invoke_arn" {
+  description = "Invoke ARN of the add custom section Lambda"
+  type        = string
+}
+
 variable "interview_start_lambda_arn" {
   description = "ARN of the interview start Lambda"
   type        = string
@@ -119,6 +129,14 @@ variable "interview_report_lambda_invoke_arn" {
   description = "Invoke ARN of the interview report Lambda"
   type        = string
 }
+variable "interview_sessions_lambda_arn" {
+  description = "ARN of the interview sessions list Lambda"
+  type        = string
+}
+variable "interview_sessions_lambda_invoke_arn" {
+  description = "Invoke ARN of the interview sessions list Lambda"
+  type        = string
+}
 
 variable "tags" {
   description = "Tags to apply to resources"
@@ -143,5 +161,51 @@ variable "get_image_upload_url_lambda_arn" {
 
 variable "get_image_upload_url_lambda_invoke_arn" {
   description = "Invoke ARN of the get image upload URL Lambda"
+  type        = string
+}
+
+variable "generate_project_image_lambda_arn" {
+  description = "ARN of the generate project image Lambda"
+  type        = string
+}
+
+variable "generate_project_image_lambda_invoke_arn" {
+  description = "Invoke ARN of the generate project image Lambda"
+  type        = string
+}
+
+variable "cancel_upload_lambda_arn" {
+  description = "ARN of the cancel upload Lambda"
+  type        = string
+}
+variable "cancel_upload_lambda_invoke_arn" {
+  description = "Invoke ARN of the cancel upload Lambda"
+  type        = string
+}
+
+variable "list_versions_lambda_arn" {
+  description = "ARN of the list versions Lambda"
+  type        = string
+}
+variable "list_versions_lambda_invoke_arn" {
+  description = "Invoke ARN of the list versions Lambda"
+  type        = string
+}
+
+variable "activate_version_lambda_arn" {
+  description = "ARN of the activate version Lambda"
+  type        = string
+}
+variable "activate_version_lambda_invoke_arn" {
+  description = "Invoke ARN of the activate version Lambda"
+  type        = string
+}
+
+variable "delete_version_lambda_arn" {
+  description = "ARN of the delete version Lambda"
+  type        = string
+}
+variable "delete_version_lambda_invoke_arn" {
+  description = "Invoke ARN of the delete version Lambda"
   type        = string
 }

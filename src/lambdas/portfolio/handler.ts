@@ -38,6 +38,7 @@ const DEFAULT_SECTION_ORDER = [
 	'investment_portfolios',
 	'design_philosophy',
 	'software_proficiency',
+	'custom_sections',
 ];
 
 // ---------------------------------------------------------------------------
@@ -110,11 +111,21 @@ export async function lambdaHandler(event: LambdaEvent, context: LambdaContext):
 		const portfolioContent = (item.portfolioContent ?? {}) as Record<string, unknown>;
 		const category = (item.category as string | undefined) ?? 'software_engineer';
 		const templateId = (item.templateId as string | undefined) ?? 'neon';
-		const sectionOrder =
+		const rawSectionOrder =
 			(item.sectionOrder as string[] | undefined) ?? DEFAULT_SECTION_ORDER;
+		// Always include custom_sections if parsedData has any — handles users whose
+		// stored sectionOrder predates the custom_sections feature.
+		const customSectionsData = parsedData.custom_sections as unknown[];
+		const sectionOrder =
+			Array.isArray(customSectionsData) && customSectionsData.length > 0 && !rawSectionOrder.includes('custom_sections')
+				? [...rawSectionOrder, 'custom_sections']
+				: rawSectionOrder;
 		const hiddenSections = (item.hiddenSections as string[] | undefined) ?? [];
 		const target = event.target ?? 'publish';
-		const version = (item.version as number | undefined) ?? 1;
+		// Increment version counter for each new publish so versions never overwrite each other.
+		// Draft target always uses the fixed /draft path and does not bump the counter.
+		const prevVersion = (item.version as number | undefined) ?? 0;
+		const version = target === 'draft' ? prevVersion : prevVersion + 1;
 
 		// Render HTML using the shared frontend templates (publishMode=true)
 		const portfolioHtml = renderPortfolio(
@@ -144,17 +155,38 @@ export async function lambdaHandler(event: LambdaEvent, context: LambdaContext):
 		const now = new Date().toISOString();
 
 		if (target !== 'draft') {
+			const versionId = `v${version}`;
+
+			// Write an immutable version snapshot — used by list/activate/delete APIs
+			await dynamodb.send(
+				new UpdateItemCommand({
+					TableName: DYNAMODB_TABLE,
+					Key: marshall({ PK: `USER#${userId}`, SK: `PORTFOLIO#VERSION#${versionId}` }),
+					UpdateExpression:
+						'SET #version = :version, portfolioPath = :path, templateId = :template, createdAt = :createdAt',
+					ExpressionAttributeNames: { '#version': 'version' },
+					ExpressionAttributeValues: marshall({
+						':version': version,
+						':path': basePath,
+						':template': templateId,
+						':createdAt': now,
+					}),
+				})
+			);
+
 			await dynamodb.send(
 				new UpdateItemCommand({
 					TableName: DYNAMODB_TABLE,
 					Key: marshall({ PK: `USER#${userId}`, SK: 'PORTFOLIO#current' }),
 					UpdateExpression:
-						'SET #status = :status, portfolioPath = :path, updatedAt = :updatedAt',
-					ExpressionAttributeNames: { '#status': 'status' },
+						'SET #status = :status, portfolioPath = :path, updatedAt = :updatedAt, #version = :version, activeVersion = :activeVersion',
+					ExpressionAttributeNames: { '#status': 'status', '#version': 'version' },
 					ExpressionAttributeValues: marshall({
 						':status': 'PUBLISHED',
 						':path': basePath,
 						':updatedAt': now,
+						':version': version,
+						':activeVersion': versionId,
 					}),
 				})
 			);

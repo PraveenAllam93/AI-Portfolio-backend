@@ -10,6 +10,7 @@ from datetime import datetime, timezone
 from interview_utils import (
     _log,
     get_user_profile,
+    get_interview_profile,
     generate_topic_plan,
     generate_questions_batch,
     generate_base_question,
@@ -68,7 +69,11 @@ def lambda_handler(event, context):
                     'error': 'No completed resume found. Please upload and process a resume first, or choose "Job Role" as the source.'
                 })
 
-        log('INFO', 'Starting interview session', userId=user_id[:8], mode=mode, difficulty=difficulty)
+        # Fetch persistent interview profile — informs topic weighting and question targeting
+        interview_profile = get_interview_profile(user_id)
+
+        log('INFO', 'Starting interview session', userId=user_id[:8], mode=mode, difficulty=difficulty,
+            profileSessions=interview_profile.get('sessionCount', 0))
 
         # Generate topic plan
         topic_plan = generate_topic_plan(
@@ -77,6 +82,7 @@ def lambda_handler(event, context):
             total_questions=total_questions,
             source=source,
             role_info=role_info,
+            interview_profile=interview_profile,
             correlation_id=correlation_id,
         )
 
@@ -92,6 +98,7 @@ def lambda_handler(event, context):
                 difficulty=difficulty,
                 source=source,
                 role_info=role_info,
+                interview_profile=interview_profile,
                 correlation_id=correlation_id,
             )
             if not questions:
@@ -131,6 +138,7 @@ def lambda_handler(event, context):
                 source=source,
                 role_info=role_info,
                 asked_questions=[],
+                interview_profile=interview_profile,
                 correlation_id=correlation_id,
             )
 

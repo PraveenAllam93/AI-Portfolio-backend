@@ -129,6 +129,36 @@ resource "aws_lambda_permission" "api_get_status" {
   source_arn    = "${aws_api_gateway_rest_api.main.execution_arn}/*/*"
 }
 
+# DELETE /status/{uploadId} — cancel an in-flight upload
+resource "aws_api_gateway_method" "delete_status" {
+  rest_api_id   = aws_api_gateway_rest_api.main.id
+  resource_id   = aws_api_gateway_resource.status_id.id
+  http_method   = "DELETE"
+  authorization = "COGNITO_USER_POOLS"
+  authorizer_id = aws_api_gateway_authorizer.cognito.id
+
+  request_parameters = {
+    "method.request.path.uploadId" = true
+  }
+}
+
+resource "aws_api_gateway_integration" "delete_status" {
+  rest_api_id             = aws_api_gateway_rest_api.main.id
+  resource_id             = aws_api_gateway_resource.status_id.id
+  http_method             = aws_api_gateway_method.delete_status.http_method
+  integration_http_method = "POST"
+  type                    = "AWS_PROXY"
+  uri                     = var.cancel_upload_lambda_invoke_arn
+}
+
+resource "aws_lambda_permission" "api_cancel_upload" {
+  statement_id  = "AllowAPIGatewayInvokeCancel"
+  action        = "lambda:InvokeFunction"
+  function_name = var.cancel_upload_lambda_arn
+  principal     = "apigateway.amazonaws.com"
+  source_arn    = "${aws_api_gateway_rest_api.main.execution_arn}/*/*"
+}
+
 # -----------------------------------------------------------------------------
 # /portfolio RESOURCE
 # -----------------------------------------------------------------------------
@@ -287,6 +317,120 @@ resource "aws_lambda_permission" "api_ai_enhance_portfolio" {
   statement_id  = "AllowAPIGatewayInvoke"
   action        = "lambda:InvokeFunction"
   function_name = var.ai_enhance_portfolio_lambda_arn
+  principal     = "apigateway.amazonaws.com"
+  source_arn    = "${aws_api_gateway_rest_api.main.execution_arn}/*/*"
+}
+
+# -----------------------------------------------------------------------------
+# /portfolio/{userId}/versions  — GET (list), and nested version actions
+# -----------------------------------------------------------------------------
+
+resource "aws_api_gateway_resource" "portfolio_versions" {
+  rest_api_id = aws_api_gateway_rest_api.main.id
+  parent_id   = aws_api_gateway_resource.portfolio_id.id
+  path_part   = "versions"
+}
+
+# GET /portfolio/{userId}/versions
+resource "aws_api_gateway_method" "get_portfolio_versions" {
+  rest_api_id   = aws_api_gateway_rest_api.main.id
+  resource_id   = aws_api_gateway_resource.portfolio_versions.id
+  http_method   = "GET"
+  authorization = "COGNITO_USER_POOLS"
+  authorizer_id = aws_api_gateway_authorizer.cognito.id
+
+  request_parameters = { "method.request.path.userId" = true }
+}
+
+resource "aws_api_gateway_integration" "get_portfolio_versions" {
+  rest_api_id             = aws_api_gateway_rest_api.main.id
+  resource_id             = aws_api_gateway_resource.portfolio_versions.id
+  http_method             = aws_api_gateway_method.get_portfolio_versions.http_method
+  integration_http_method = "POST"
+  type                    = "AWS_PROXY"
+  uri                     = var.list_versions_lambda_invoke_arn
+}
+
+resource "aws_lambda_permission" "api_list_versions" {
+  statement_id  = "AllowAPIGatewayInvoke"
+  action        = "lambda:InvokeFunction"
+  function_name = var.list_versions_lambda_arn
+  principal     = "apigateway.amazonaws.com"
+  source_arn    = "${aws_api_gateway_rest_api.main.execution_arn}/*/*"
+}
+
+# /portfolio/{userId}/versions/{versionId}
+resource "aws_api_gateway_resource" "portfolio_version_id" {
+  rest_api_id = aws_api_gateway_rest_api.main.id
+  parent_id   = aws_api_gateway_resource.portfolio_versions.id
+  path_part   = "{versionId}"
+}
+
+# DELETE /portfolio/{userId}/versions/{versionId}
+resource "aws_api_gateway_method" "delete_portfolio_version" {
+  rest_api_id   = aws_api_gateway_rest_api.main.id
+  resource_id   = aws_api_gateway_resource.portfolio_version_id.id
+  http_method   = "DELETE"
+  authorization = "COGNITO_USER_POOLS"
+  authorizer_id = aws_api_gateway_authorizer.cognito.id
+
+  request_parameters = {
+    "method.request.path.userId"    = true
+    "method.request.path.versionId" = true
+  }
+}
+
+resource "aws_api_gateway_integration" "delete_portfolio_version" {
+  rest_api_id             = aws_api_gateway_rest_api.main.id
+  resource_id             = aws_api_gateway_resource.portfolio_version_id.id
+  http_method             = aws_api_gateway_method.delete_portfolio_version.http_method
+  integration_http_method = "POST"
+  type                    = "AWS_PROXY"
+  uri                     = var.delete_version_lambda_invoke_arn
+}
+
+resource "aws_lambda_permission" "api_delete_version" {
+  statement_id  = "AllowAPIGatewayInvoke"
+  action        = "lambda:InvokeFunction"
+  function_name = var.delete_version_lambda_arn
+  principal     = "apigateway.amazonaws.com"
+  source_arn    = "${aws_api_gateway_rest_api.main.execution_arn}/*/*"
+}
+
+# /portfolio/{userId}/versions/{versionId}/activate
+resource "aws_api_gateway_resource" "portfolio_version_activate" {
+  rest_api_id = aws_api_gateway_rest_api.main.id
+  parent_id   = aws_api_gateway_resource.portfolio_version_id.id
+  path_part   = "activate"
+}
+
+# POST /portfolio/{userId}/versions/{versionId}/activate
+resource "aws_api_gateway_method" "post_activate_version" {
+  rest_api_id   = aws_api_gateway_rest_api.main.id
+  resource_id   = aws_api_gateway_resource.portfolio_version_activate.id
+  http_method   = "POST"
+  authorization = "COGNITO_USER_POOLS"
+  authorizer_id = aws_api_gateway_authorizer.cognito.id
+
+  request_parameters = {
+    "method.request.path.userId"    = true
+    "method.request.path.versionId" = true
+  }
+}
+
+resource "aws_api_gateway_integration" "post_activate_version" {
+  rest_api_id             = aws_api_gateway_rest_api.main.id
+  resource_id             = aws_api_gateway_resource.portfolio_version_activate.id
+  http_method             = aws_api_gateway_method.post_activate_version.http_method
+  integration_http_method = "POST"
+  type                    = "AWS_PROXY"
+  uri                     = var.activate_version_lambda_invoke_arn
+}
+
+resource "aws_lambda_permission" "api_activate_version" {
+  statement_id  = "AllowAPIGatewayInvoke"
+  action        = "lambda:InvokeFunction"
+  function_name = var.activate_version_lambda_arn
   principal     = "apigateway.amazonaws.com"
   source_arn    = "${aws_api_gateway_rest_api.main.execution_arn}/*/*"
 }
@@ -460,6 +604,82 @@ resource "aws_api_gateway_integration_response" "options_portfolio_ai_enhance" {
   }
 }
 
+# /portfolio/{userId}/custom-section — POST (Cognito auth, AI classifier)
+resource "aws_api_gateway_resource" "portfolio_custom_section" {
+  rest_api_id = aws_api_gateway_rest_api.main.id
+  parent_id   = aws_api_gateway_resource.portfolio_id.id
+  path_part   = "custom-section"
+}
+
+resource "aws_api_gateway_method" "add_custom_section" {
+  rest_api_id   = aws_api_gateway_rest_api.main.id
+  resource_id   = aws_api_gateway_resource.portfolio_custom_section.id
+  http_method   = "POST"
+  authorization = "COGNITO_USER_POOLS"
+  authorizer_id = aws_api_gateway_authorizer.cognito.id
+
+  request_parameters = {
+    "method.request.path.userId" = true
+  }
+}
+
+resource "aws_api_gateway_integration" "add_custom_section" {
+  rest_api_id             = aws_api_gateway_rest_api.main.id
+  resource_id             = aws_api_gateway_resource.portfolio_custom_section.id
+  http_method             = aws_api_gateway_method.add_custom_section.http_method
+  integration_http_method = "POST"
+  type                    = "AWS_PROXY"
+  uri                     = var.add_custom_section_lambda_invoke_arn
+}
+
+resource "aws_lambda_permission" "api_add_custom_section" {
+  statement_id  = "AllowAPIGatewayInvoke"
+  action        = "lambda:InvokeFunction"
+  function_name = var.add_custom_section_lambda_arn
+  principal     = "apigateway.amazonaws.com"
+  source_arn    = "${aws_api_gateway_rest_api.main.execution_arn}/*/*"
+}
+
+# CORS for /portfolio/{userId}/custom-section
+resource "aws_api_gateway_method" "options_portfolio_custom_section" {
+  rest_api_id   = aws_api_gateway_rest_api.main.id
+  resource_id   = aws_api_gateway_resource.portfolio_custom_section.id
+  http_method   = "OPTIONS"
+  authorization = "NONE"
+}
+
+resource "aws_api_gateway_integration" "options_portfolio_custom_section" {
+  rest_api_id = aws_api_gateway_rest_api.main.id
+  resource_id = aws_api_gateway_resource.portfolio_custom_section.id
+  http_method = aws_api_gateway_method.options_portfolio_custom_section.http_method
+  type        = "MOCK"
+  request_templates = { "application/json" = "{\"statusCode\": 200}" }
+}
+
+resource "aws_api_gateway_method_response" "options_portfolio_custom_section" {
+  rest_api_id = aws_api_gateway_rest_api.main.id
+  resource_id = aws_api_gateway_resource.portfolio_custom_section.id
+  http_method = aws_api_gateway_method.options_portfolio_custom_section.http_method
+  status_code = "200"
+  response_parameters = {
+    "method.response.header.Access-Control-Allow-Headers" = true
+    "method.response.header.Access-Control-Allow-Methods" = true
+    "method.response.header.Access-Control-Allow-Origin"  = true
+  }
+}
+
+resource "aws_api_gateway_integration_response" "options_portfolio_custom_section" {
+  rest_api_id = aws_api_gateway_rest_api.main.id
+  resource_id = aws_api_gateway_resource.portfolio_custom_section.id
+  http_method = aws_api_gateway_method.options_portfolio_custom_section.http_method
+  status_code = aws_api_gateway_method_response.options_portfolio_custom_section.status_code
+  response_parameters = {
+    "method.response.header.Access-Control-Allow-Headers" = "'Content-Type,Authorization'"
+    "method.response.header.Access-Control-Allow-Methods" = "'OPTIONS,POST'"
+    "method.response.header.Access-Control-Allow-Origin"  = "'*'"
+  }
+}
+
 # -----------------------------------------------------------------------------
 # /portfolio/{userId}/publish — POST (Cognito auth, publish draft to live)
 # -----------------------------------------------------------------------------
@@ -609,6 +829,90 @@ resource "aws_api_gateway_integration_response" "options_portfolio_image_upload_
   resource_id = aws_api_gateway_resource.portfolio_image_upload_url.id
   http_method = aws_api_gateway_method.options_portfolio_image_upload_url.http_method
   status_code = aws_api_gateway_method_response.options_portfolio_image_upload_url.status_code
+  response_parameters = {
+    "method.response.header.Access-Control-Allow-Headers" = "'Content-Type,Authorization'"
+    "method.response.header.Access-Control-Allow-Methods" = "'OPTIONS,POST'"
+    "method.response.header.Access-Control-Allow-Origin"  = "'*'"
+  }
+}
+
+# =============================================================================
+# /portfolio/{userId}/project-image/generate — POST (DALL-E 3 image generation)
+# =============================================================================
+
+resource "aws_api_gateway_resource" "portfolio_project_image" {
+  rest_api_id = aws_api_gateway_rest_api.main.id
+  parent_id   = aws_api_gateway_resource.portfolio_id.id
+  path_part   = "project-image"
+}
+
+resource "aws_api_gateway_resource" "portfolio_project_image_generate" {
+  rest_api_id = aws_api_gateway_rest_api.main.id
+  parent_id   = aws_api_gateway_resource.portfolio_project_image.id
+  path_part   = "generate"
+}
+
+resource "aws_api_gateway_method" "post_project_image_generate" {
+  rest_api_id   = aws_api_gateway_rest_api.main.id
+  resource_id   = aws_api_gateway_resource.portfolio_project_image_generate.id
+  http_method   = "POST"
+  authorization = "COGNITO_USER_POOLS"
+  authorizer_id = aws_api_gateway_authorizer.cognito.id
+
+  request_parameters = {
+    "method.request.path.userId" = true
+  }
+}
+
+resource "aws_api_gateway_integration" "post_project_image_generate" {
+  rest_api_id             = aws_api_gateway_rest_api.main.id
+  resource_id             = aws_api_gateway_resource.portfolio_project_image_generate.id
+  http_method             = aws_api_gateway_method.post_project_image_generate.http_method
+  integration_http_method = "POST"
+  type                    = "AWS_PROXY"
+  uri                     = var.generate_project_image_lambda_invoke_arn
+}
+
+resource "aws_lambda_permission" "api_generate_project_image" {
+  statement_id  = "AllowAPIGatewayInvoke"
+  action        = "lambda:InvokeFunction"
+  function_name = var.generate_project_image_lambda_arn
+  principal     = "apigateway.amazonaws.com"
+  source_arn    = "${aws_api_gateway_rest_api.main.execution_arn}/*/*"
+}
+
+resource "aws_api_gateway_method" "options_portfolio_project_image_generate" {
+  rest_api_id   = aws_api_gateway_rest_api.main.id
+  resource_id   = aws_api_gateway_resource.portfolio_project_image_generate.id
+  http_method   = "OPTIONS"
+  authorization = "NONE"
+}
+
+resource "aws_api_gateway_integration" "options_portfolio_project_image_generate" {
+  rest_api_id = aws_api_gateway_rest_api.main.id
+  resource_id = aws_api_gateway_resource.portfolio_project_image_generate.id
+  http_method = aws_api_gateway_method.options_portfolio_project_image_generate.http_method
+  type        = "MOCK"
+  request_templates = { "application/json" = "{\"statusCode\": 200}" }
+}
+
+resource "aws_api_gateway_method_response" "options_portfolio_project_image_generate" {
+  rest_api_id = aws_api_gateway_rest_api.main.id
+  resource_id = aws_api_gateway_resource.portfolio_project_image_generate.id
+  http_method = aws_api_gateway_method.options_portfolio_project_image_generate.http_method
+  status_code = "200"
+  response_parameters = {
+    "method.response.header.Access-Control-Allow-Headers" = true
+    "method.response.header.Access-Control-Allow-Methods" = true
+    "method.response.header.Access-Control-Allow-Origin"  = true
+  }
+}
+
+resource "aws_api_gateway_integration_response" "options_portfolio_project_image_generate" {
+  rest_api_id = aws_api_gateway_rest_api.main.id
+  resource_id = aws_api_gateway_resource.portfolio_project_image_generate.id
+  http_method = aws_api_gateway_method.options_portfolio_project_image_generate.http_method
+  status_code = aws_api_gateway_method_response.options_portfolio_project_image_generate.status_code
   response_parameters = {
     "method.response.header.Access-Control-Allow-Headers" = "'Content-Type,Authorization'"
     "method.response.header.Access-Control-Allow-Methods" = "'OPTIONS,POST'"
@@ -921,6 +1225,77 @@ resource "aws_api_gateway_integration_response" "options_interview_report" {
   }
 }
 
+# /interview/sessions
+resource "aws_api_gateway_resource" "interview_sessions" {
+  rest_api_id = aws_api_gateway_rest_api.main.id
+  parent_id   = aws_api_gateway_resource.interview.id
+  path_part   = "sessions"
+}
+
+resource "aws_api_gateway_method" "get_interview_sessions" {
+  rest_api_id   = aws_api_gateway_rest_api.main.id
+  resource_id   = aws_api_gateway_resource.interview_sessions.id
+  http_method   = "GET"
+  authorization = "COGNITO_USER_POOLS"
+  authorizer_id = aws_api_gateway_authorizer.cognito.id
+}
+
+resource "aws_api_gateway_integration" "get_interview_sessions" {
+  rest_api_id             = aws_api_gateway_rest_api.main.id
+  resource_id             = aws_api_gateway_resource.interview_sessions.id
+  http_method             = aws_api_gateway_method.get_interview_sessions.http_method
+  integration_http_method = "POST"
+  type                    = "AWS_PROXY"
+  uri                     = var.interview_sessions_lambda_invoke_arn
+}
+
+resource "aws_lambda_permission" "api_interview_sessions" {
+  statement_id  = "AllowAPIGatewayInvokeInterviewSessions"
+  action        = "lambda:InvokeFunction"
+  function_name = var.interview_sessions_lambda_arn
+  principal     = "apigateway.amazonaws.com"
+  source_arn    = "${aws_api_gateway_rest_api.main.execution_arn}/*/*"
+}
+
+resource "aws_api_gateway_method" "options_interview_sessions" {
+  rest_api_id   = aws_api_gateway_rest_api.main.id
+  resource_id   = aws_api_gateway_resource.interview_sessions.id
+  http_method   = "OPTIONS"
+  authorization = "NONE"
+}
+
+resource "aws_api_gateway_integration" "options_interview_sessions" {
+  rest_api_id = aws_api_gateway_rest_api.main.id
+  resource_id = aws_api_gateway_resource.interview_sessions.id
+  http_method = aws_api_gateway_method.options_interview_sessions.http_method
+  type        = "MOCK"
+  request_templates = { "application/json" = "{\"statusCode\": 200}" }
+}
+
+resource "aws_api_gateway_method_response" "options_interview_sessions" {
+  rest_api_id = aws_api_gateway_rest_api.main.id
+  resource_id = aws_api_gateway_resource.interview_sessions.id
+  http_method = aws_api_gateway_method.options_interview_sessions.http_method
+  status_code = "200"
+  response_parameters = {
+    "method.response.header.Access-Control-Allow-Headers" = true
+    "method.response.header.Access-Control-Allow-Methods" = true
+    "method.response.header.Access-Control-Allow-Origin"  = true
+  }
+}
+
+resource "aws_api_gateway_integration_response" "options_interview_sessions" {
+  rest_api_id = aws_api_gateway_rest_api.main.id
+  resource_id = aws_api_gateway_resource.interview_sessions.id
+  http_method = aws_api_gateway_method.options_interview_sessions.http_method
+  status_code = aws_api_gateway_method_response.options_interview_sessions.status_code
+  response_parameters = {
+    "method.response.header.Access-Control-Allow-Headers" = "'Content-Type,Authorization'"
+    "method.response.header.Access-Control-Allow-Methods" = "'OPTIONS,GET'"
+    "method.response.header.Access-Control-Allow-Origin"  = "'*'"
+  }
+}
+
 # -----------------------------------------------------------------------------
 # ACCESS LOGGING
 # -----------------------------------------------------------------------------
@@ -982,12 +1357,15 @@ resource "aws_api_gateway_deployment" "main" {
       aws_api_gateway_resource.portfolio_ai_enhance.id,
       aws_api_gateway_resource.portfolio_publish.id,
       aws_api_gateway_resource.portfolio_image_upload_url.id,
+      aws_api_gateway_resource.portfolio_project_image.id,
+      aws_api_gateway_resource.portfolio_project_image_generate.id,
       aws_api_gateway_resource.interview.id,
       aws_api_gateway_resource.interview_start.id,
       aws_api_gateway_resource.interview_answer.id,
       aws_api_gateway_resource.interview_exit.id,
       aws_api_gateway_resource.interview_session_id.id,
       aws_api_gateway_resource.interview_report.id,
+      aws_api_gateway_resource.interview_sessions.id,
       aws_api_gateway_method.post_presigned_url.id,
       aws_api_gateway_method.get_status.id,
       aws_api_gateway_method.get_portfolio.id,
@@ -1004,14 +1382,21 @@ resource "aws_api_gateway_deployment" "main" {
       aws_api_gateway_integration.post_publish_portfolio.id,
       aws_api_gateway_method.post_image_upload_url.id,
       aws_api_gateway_integration.post_image_upload_url.id,
+      aws_api_gateway_method.post_project_image_generate.id,
+      aws_api_gateway_integration.post_project_image_generate.id,
       aws_api_gateway_method.post_interview_start.id,
       aws_api_gateway_method.post_interview_answer.id,
       aws_api_gateway_method.post_interview_exit.id,
       aws_api_gateway_method.get_interview_report.id,
+      aws_api_gateway_method.get_interview_sessions.id,
       aws_api_gateway_integration.post_interview_start.id,
       aws_api_gateway_integration.post_interview_answer.id,
       aws_api_gateway_integration.post_interview_exit.id,
       aws_api_gateway_integration.get_interview_report.id,
+      aws_api_gateway_integration.get_interview_sessions.id,
+      aws_api_gateway_resource.portfolio_custom_section.id,
+      aws_api_gateway_method.add_custom_section.id,
+      aws_api_gateway_integration.add_custom_section.id,
     ]))
   }
 

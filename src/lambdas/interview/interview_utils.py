@@ -24,6 +24,26 @@ ALLOWED_ORIGIN = os.environ.get('ALLOWED_ORIGIN', '*')
 
 # Limits
 MAX_ANSWER_LENGTH = 2000
+
+def _flatten_skills(skills_raw) -> list[str]:
+    """
+    Normalise the parsedData 'skills' field into a flat list of strings.
+    Handles two shapes produced by the AI processing lambda:
+      - Flat list:        ["Python", "SQL", ...]
+      - Categorised list: [{"category": "...", "skills": ["Python", ...]}, ...]
+    """
+    if not skills_raw:
+        return []
+    flat = []
+    for item in skills_raw:
+        if isinstance(item, str):
+            flat.append(item)
+        elif isinstance(item, dict):
+            inner = item.get('skills') or []
+            flat.extend(s for s in inner if isinstance(s, str))
+    return flat
+
+
 MAX_ROLE_INFO_LENGTH = 500
 MAX_FOLLOW_UPS_PER_TOPIC = 2  # base + 2 follow-ups = 3 questions max per topic
 OPENAI_MODEL = 'gpt-4o-mini'
@@ -147,6 +167,129 @@ def get_user_profile(user_id: str) -> dict | None:
 
 
 # ---------------------------------------------------------------------------
+# Persistent interview profile (SWOT-style, per user)
+# ---------------------------------------------------------------------------
+
+_DECAY = 0.85          # applied to existing weights each session so recent data dominates
+_MAX_TAGS = 20         # keep top-N strength/weakness strings
+_MAX_TOPIC_ENTRIES = 30  # rolling window of per-session topic scores
+_MIN_SESSIONS_TO_USE = 2  # don't inject profile until we have meaningful history
+
+
+def get_interview_profile(user_id: str) -> dict:
+    """Return the user's persistent interview profile, or {} if none yet."""
+    table = dynamodb.Table(DYNAMODB_TABLE)
+    resp = table.get_item(Key={'PK': f'USER#{user_id}', 'SK': 'INTERVIEW_PROFILE'})
+    item = resp.get('Item')
+    return _from_dynamodb(item) if item else {}
+
+
+def update_interview_profile(user_id: str, history: list[dict], skill_scores: dict) -> None:
+    """
+    Merge a completed session into the user's persistent profile.
+
+    Strength/weakness strings are stored as weighted floats. Each session:
+      1. Existing weights are decayed by _DECAY (×0.85) — old data fades.
+      2. New session counts are added on top.
+    This means recent sessions dominate without throwing away history entirely.
+    """
+    if not history:
+        return
+
+    table = dynamodb.Table(DYNAMODB_TABLE)
+
+    # Load existing
+    resp = table.get_item(Key={'PK': f'USER#{user_id}', 'SK': 'INTERVIEW_PROFILE'})
+    existing = _from_dynamodb(resp.get('Item') or {})
+
+    # Decay existing weights
+    strengths: dict[str, float] = {
+        k: float(v) * _DECAY for k, v in (existing.get('strengths') or {}).items()
+    }
+    weaknesses: dict[str, float] = {
+        k: float(v) * _DECAY for k, v in (existing.get('weaknesses') or {}).items()
+    }
+
+    # Accumulate this session
+    for entry in history:
+        for s in entry.get('strengths', []):
+            strengths[s] = strengths.get(s, 0.0) + 1.0
+        for w in entry.get('weaknesses', []):
+            weaknesses[w] = weaknesses.get(w, 0.0) + 1.0
+
+    # Trim to top-N by weight
+    strengths = dict(sorted(strengths.items(), key=lambda x: -x[1])[:_MAX_TAGS])
+    weaknesses = dict(sorted(weaknesses.items(), key=lambda x: -x[1])[:_MAX_TAGS])
+
+    # Topic history: append per-session avg score for each topic, keep rolling window
+    topic_history: list[dict] = list(existing.get('topicHistory') or [])
+    now = datetime.now(timezone.utc).isoformat()
+    for topic, scores in skill_scores.items():
+        if scores:
+            avg = round(sum(scores) / len(scores), 1)
+            topic_history.append({'topic': topic, 'score': avg, 'at': now})
+    topic_history = topic_history[-_MAX_TOPIC_ENTRIES:]
+
+    # Rolling average per topic
+    topic_totals: dict[str, list] = {}
+    for entry in topic_history:
+        topic_totals.setdefault(entry['topic'], []).append(entry['score'])
+    topic_avg_scores = {t: round(sum(v) / len(v), 1) for t, v in topic_totals.items()}
+
+    # Recommended focus: topics below 6.5, worst first, max 5
+    recommended_focus = [
+        t for t, avg in sorted(topic_avg_scores.items(), key=lambda x: x[1])
+        if avg < 6.5
+    ][:5]
+
+    session_count = int(existing.get('sessionCount') or 0) + 1
+
+    table.put_item(Item=_to_dynamodb({
+        'PK': f'USER#{user_id}',
+        'SK': 'INTERVIEW_PROFILE',
+        'sessionCount': session_count,
+        'strengths': strengths,
+        'weaknesses': weaknesses,
+        'topicHistory': topic_history,
+        'topicAvgScores': topic_avg_scores,
+        'recommendedFocus': recommended_focus,
+        'lastUpdatedAt': now,
+    }))
+
+
+def _build_profile_context(interview_profile: dict) -> str:
+    """
+    Return a prompt snippet summarising the user's learning profile.
+    Returns '' if the profile is too thin to be useful.
+    """
+    if not interview_profile or int(interview_profile.get('sessionCount') or 0) < _MIN_SESSIONS_TO_USE:
+        return ''
+
+    top_weak = sorted(
+        (interview_profile.get('weaknesses') or {}).items(), key=lambda x: -x[1]
+    )[:3]
+    top_strong = sorted(
+        (interview_profile.get('strengths') or {}).items(), key=lambda x: -x[1]
+    )[:3]
+    focus = (interview_profile.get('recommendedFocus') or [])[:4]
+
+    if not top_weak and not top_strong:
+        return ''
+
+    lines = [f'\nLearning profile ({interview_profile["sessionCount"]} sessions):']
+    if top_strong:
+        lines.append(f'- Consistent strengths: {", ".join(s for s, _ in top_strong)}')
+    if top_weak:
+        lines.append(f'- Persistent gaps: {", ".join(w for w, _ in top_weak)}')
+    if focus:
+        lines.append(
+            f'- Focus areas (score < 6.5): {", ".join(focus)}'
+            ' — allocate more questions here and probe these gaps directly.'
+        )
+    return '\n'.join(lines)
+
+
+# ---------------------------------------------------------------------------
 # Topic plan + question generation
 # ---------------------------------------------------------------------------
 
@@ -156,6 +299,7 @@ def generate_topic_plan(
     total_questions: int,
     source: str,
     role_info: str = '',
+    interview_profile: dict | None = None,
     correlation_id: str = 'local',
 ) -> list[dict]:
     """
@@ -164,25 +308,39 @@ def generate_topic_plan(
     """
     if source == 'resume' and profile:
         context = f"""Candidate profile summary (from their resume):
-- Skills: {', '.join((profile.get('skills') or [])[:20])}
+- Skills: {', '.join(_flatten_skills(profile.get('skills'))[:20])}
 - Experience: {len(profile.get('experience') or [])} roles
 - Most recent role: {((profile.get('experience') or [{}])[0]).get('title', 'Unknown')}"""
     else:
         context = f"Role/position: {role_info or 'Software Engineer (general)'}"
 
+    profile_ctx = _build_profile_context(interview_profile or {})
+
     system = (
-        'You are an interview planning assistant. '
-        'Return ONLY a valid JSON object with a single key "topics" '
-        'which is an array of objects each having "topic" (string) and "count" (integer). '
-        'The sum of all counts MUST equal the requested total. '
-        'Choose relevant technical and behavioural topics based on context.'
+        'You are an expert interview coach who designs interview question plans for any profession. '
+        'Your job is to identify the correct interview format for the given role and produce a realistic topic distribution. '
+        'Rules:\n'
+        '1. First, identify the nature of the role (e.g. technical/engineering, civil services/government, creative/design, business/marketing, healthcare, law, finance, etc.).\n'
+        '2. Choose 3-5 topics that a real interviewer for that specific role would actually assess. '
+        'Do NOT default to generic software-engineering topics unless the role is explicitly technical.\n'
+        '3. Examples of correct topic mapping:\n'
+        '   - Software Engineer → Data Structures, System Design, Problem Solving, Behavioural, Language/Framework Knowledge\n'
+        '   - IAS / UPSC / Civil Services → Current Affairs, Indian Polity & Governance, Ethics & Integrity, Geography & Environment, Economy & Social Issues\n'
+        '   - UI/UX Designer → Design Thinking, Portfolio & Case Studies, User Research, Visual Design Principles, Collaboration & Process\n'
+        '   - Marketing Manager → Brand Strategy, Campaign Planning, Consumer Psychology, Data & Analytics, Stakeholder Communication\n'
+        '   - Finance Analyst → Financial Modelling, Accounting Principles, Valuation, Risk Assessment, Market Knowledge\n'
+        '   - Product Manager → Product Strategy, Prioritisation Frameworks, Metrics & Data, Customer Empathy, Cross-functional Collaboration\n'
+        '4. Topics must be specific to the role — avoid vague catch-alls like "General Knowledge" or "Communication Skills" unless truly central to that role\'s interview.\n'
+        '5. The sum of all "count" values MUST equal the requested total.\n'
+        'Return ONLY a valid JSON object: {"topics": [{"topic": "...", "count": N}, ...]}'
     )
-    user_msg = f"""{context}
+    user_msg = f"""{context}{profile_ctx}
 
 Difficulty: {difficulty}
 Total questions: {total_questions}
 
-Create a topic distribution. Use 3-5 distinct topics. Ensure the counts sum to exactly {total_questions}.
+Design the topic distribution for this interview. Use 3-5 topics that reflect what a real interviewer for this role would assess.
+Counts must sum to exactly {total_questions}.
 Return JSON: {{"topics": [{{"topic": "...", "count": N}}, ...]}}"""
 
     raw = _call_openai(system, user_msg, correlation_id)
@@ -203,6 +361,7 @@ def generate_questions_batch(
     difficulty: str,
     source: str,
     role_info: str = '',
+    interview_profile: dict | None = None,
     correlation_id: str = 'local',
 ) -> list[dict]:
     """
@@ -213,22 +372,28 @@ def generate_questions_batch(
     topic_list = ', '.join(f"{t['topic']} ({t['count']} questions)" for t in topic_plan)
 
     if source == 'resume' and profile:
-        ctx = f"Candidate skills: {', '.join((profile.get('skills') or [])[:15])}"
+        ctx = f"Candidate skills: {', '.join(_flatten_skills(profile.get('skills'))[:15])}"
     else:
         ctx = f"Role: {role_info or 'Software Engineer'}"
 
     system = (
-        'You are a technical interviewer. '
+        'You are an expert interviewer who conducts interviews for any profession. '
+        'Generate questions that a real interviewer for this specific role would ask — '
+        'match the style, depth, and domain knowledge expected for the role. '
+        'For technical roles ask technical questions; for civil services ask governance/current affairs questions; '
+        'for creative roles ask about process, portfolio, and craft; and so on. '
         'Return ONLY a valid JSON object with a single key "questions" '
         'which is an array of objects each having "question" (string) and "topic" (string). '
         'Do NOT include answers. Questions must be clear, specific, and interview-appropriate.'
     )
-    user_msg = f"""{ctx}
+    profile_ctx = _build_profile_context(interview_profile or {})
+
+    user_msg = f"""{ctx}{profile_ctx}
 Difficulty: {difficulty}
 Topics and question counts: {topic_list}
 Total: {total} questions
 
-Generate exactly {total} interview questions following the topic distribution above.
+Generate exactly {total} interview questions that a real interviewer for this role would ask, following the topic distribution above.
 Return JSON: {{"questions": [{{"question": "...", "topic": "..."}}, ...]}}"""
 
     raw = _call_openai(system, user_msg, correlation_id)
@@ -243,6 +408,7 @@ def generate_base_question(
     source: str,
     role_info: str = '',
     asked_questions: list[str] | None = None,
+    interview_profile: dict | None = None,
     correlation_id: str = 'local',
 ) -> str:
     """
@@ -250,7 +416,7 @@ def generate_base_question(
     asked_questions: list of question texts already asked (to avoid repetition).
     """
     if source == 'resume' and profile:
-        ctx = f"Candidate skills: {', '.join((profile.get('skills') or [])[:15])}"
+        ctx = f"Candidate skills: {', '.join(_flatten_skills(profile.get('skills'))[:15])}"
     else:
         ctx = f"Role: {role_info or 'Software Engineer'}"
 
@@ -259,14 +425,18 @@ def generate_base_question(
         avoid = f"\nDo NOT repeat these already-asked questions:\n- " + '\n- '.join(asked_questions[-5:])
 
     system = (
-        'You are a technical interviewer. '
+        'You are an expert interviewer who conducts interviews for any profession. '
+        'Generate a question that a real interviewer for this specific role would ask — '
+        'match the style and domain knowledge expected for the role and topic. '
         'Return ONLY a valid JSON object with key "question" (string).'
     )
-    user_msg = f"""{ctx}
+    profile_ctx = _build_profile_context(interview_profile or {})
+
+    user_msg = f"""{ctx}{profile_ctx}
 Topic: {topic}
 Difficulty: {difficulty}{avoid}
 
-Generate ONE opening base question for this topic. Make it clear and specific.
+Generate ONE clear, role-appropriate opening question for this topic. If the learning profile shows gaps in this topic, probe those gaps directly.
 Return JSON: {{"question": "..."}}"""
 
     raw = _call_openai(system, user_msg, correlation_id)
@@ -330,7 +500,9 @@ def evaluate_answer(
     safe_answer = sanitize_answer(raw_answer)
 
     system = (
-        'You are a strict but fair technical interviewer evaluating a candidate\'s answer. '
+        'You are a strict but fair interviewer evaluating a candidate\'s answer for the given role and topic. '
+        'Judge the answer by the standards appropriate for that specific domain — '
+        'not every role requires technical depth; assess clarity, domain knowledge, structure, and relevance instead. '
         'Return ONLY a valid JSON object with exactly these keys: '
         '"score" (integer 0-10), '
         '"strengths" (array of up to 3 short strings), '

@@ -79,6 +79,7 @@ _ALLOWED_ARRAY_SECTIONS: dict[str, int] = {
     'campaigns': 30,
     'financial_modeling': 30,
     'investment_portfolios': 30,
+    'custom_sections': 20,
 }
 
 # Shape B: string sections in parsedData -> max character length
@@ -321,6 +322,7 @@ _ALL_SECTION_KEYS = {
     'experience', 'projects', 'skills', 'education', 'certifications',
     'achievements', 'awards', 'campaigns', 'financial_modeling',
     'investment_portfolios', 'design_philosophy', 'software_proficiency',
+    'custom_sections',
 }
 
 
@@ -419,6 +421,16 @@ def _handle_section_patch(body: dict, path_user_id: str, correlation_id: str) ->
                 return _response(400, {
                     'error': f'section "{section}" exceeds the {max_items}-item limit'
                 })
+            if section == 'custom_sections':
+                for cs in data:
+                    if not isinstance(cs, dict):
+                        return _response(400, {'error': 'Each custom section must be an object'})
+                    if not cs.get('section_id') or not cs.get('title'):
+                        return _response(400, {'error': 'Each custom section requires "section_id" and "title"'})
+                    if cs.get('display_type') not in ('cards', 'list', 'timeline'):
+                        return _response(400, {'error': '"display_type" must be "cards", "list", or "timeline"'})
+                    if not isinstance(cs.get('items', []), list):
+                        return _response(400, {'error': '"items" must be an array'})
             sanitized_data = [_sanitize_item(item) for item in data]
 
         elif section in _ALLOWED_STRING_SECTIONS:

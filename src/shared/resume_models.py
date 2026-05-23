@@ -12,7 +12,7 @@ Supported categories (must match ALLOWED_CATEGORIES):
     - finance
 """
 
-from typing import List, Optional, Dict
+from typing import List, Literal, Optional, Dict
 from pydantic import BaseModel, Field
 
 ALLOWED_CATEGORIES = {
@@ -368,6 +368,49 @@ class CertificationItem(BaseModel):
 
 
 # =====================================================
+# CUSTOM SECTIONS (all categories)
+# =====================================================
+
+class CustomSectionItem(BaseModel):
+    label: Optional[str] = Field(
+        description="Short title or name for this item"
+    )
+    value: Optional[str] = Field(
+        description="Main content, description, or body text for this item"
+    )
+    subtitle: Optional[str] = Field(
+        description="Secondary info such as date range, organization, or role"
+    )
+    tags: Optional[List[str]] = Field(
+        default_factory=list,
+        description="Optional tags, chips, or categories for this item"
+    )
+    url: Optional[str] = Field(
+        description="Optional URL to link from this item"
+    )
+
+
+class CustomSection(BaseModel):
+    section_id: str = Field(
+        description="Unique snake_case identifier for this section (e.g. 'volunteer_work', 'speaking_engagements')"
+    )
+    title: str = Field(
+        description="Human-readable section heading displayed on the portfolio"
+    )
+    display_type: Literal["cards", "list", "timeline"] = Field(
+        description=(
+            "Rendering layout. 'cards' = grid of cards (best for projects/talks), "
+            "'list' = bullet list (best for skills/items), "
+            "'timeline' = chronological entries (best for history/events)"
+        )
+    )
+    items: List[CustomSectionItem] = Field(
+        default_factory=list,
+        description="Ordered list of items in this section"
+    )
+
+
+# =====================================================
 # SOFTWARE ENGINEER
 # =====================================================
 
@@ -391,6 +434,10 @@ class SoftwareEngineerModel(BaseModel):
     achievements: Optional[List[AchievementItem]]
     education: Optional[List[EducationItem]]
     certifications: Optional[List[CertificationItem]]
+    custom_sections: Optional[List[CustomSection]] = Field(
+        default_factory=list,
+        description="Additional portfolio sections added by the user that don't fit standard categories"
+    )
 
 
 # =====================================================
@@ -430,6 +477,10 @@ class DesignerModel(BaseModel):
     achievements: Optional[List[AchievementItem]]
     education: Optional[List[EducationItem]]
     certifications: Optional[List[CertificationItem]]
+    custom_sections: Optional[List[CustomSection]] = Field(
+        default_factory=list,
+        description="Additional portfolio sections added by the user that don't fit standard categories"
+    )
 
 
 # =====================================================
@@ -463,6 +514,10 @@ class MarketingModel(BaseModel):
     achievements: Optional[List[AchievementItem]]
     education: Optional[List[EducationItem]]
     certifications: Optional[List[CertificationItem]]
+    custom_sections: Optional[List[CustomSection]] = Field(
+        default_factory=list,
+        description="Additional portfolio sections added by the user that don't fit standard categories"
+    )
 
 
 # =====================================================
@@ -508,6 +563,10 @@ class FinanceModel(BaseModel):
     achievements: Optional[List[AchievementItem]]
     education: Optional[List[EducationItem]]
     certifications: Optional[List[CertificationItem]]
+    custom_sections: Optional[List[CustomSection]] = Field(
+        default_factory=list,
+        description="Additional portfolio sections added by the user that don't fit standard categories"
+    )
 
 # ---------------------------------------------------------------------------
 # Registry — maps category string → (model class, prompt instruction)

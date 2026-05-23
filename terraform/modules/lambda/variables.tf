@@ -161,6 +161,12 @@ variable "cloudfront_domain" {
   type        = string
 }
 
+variable "dlq_max_receive_count" {
+  description = "Max SQS receive count before a message goes to the DLQ (used as SQS_MAX_RECEIVE_COUNT env var)"
+  type        = number
+  default     = 3
+}
+
 # CORS
 variable "allowed_origin" {
   description = "CORS allowed origin for API responses (e.g. https://app.example.com)"

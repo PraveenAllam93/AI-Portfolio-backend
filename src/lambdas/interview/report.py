@@ -41,21 +41,11 @@ def lambda_handler(event, context):
         if session.get('userId') != user_id:
             return response(403, {'error': 'Forbidden'})
 
-        # Return cached report if available
-        if session.get('report'):
-            return response(200, {
-                'sessionId': session_id,
-                'status': session.get('status'),
-                'report': session['report'],
-                'mode': session.get('mode'),
-                'difficulty': session.get('difficulty'),
-                'createdAt': session.get('createdAt'),
-            })
-
-        # Compute on-the-fly for sessions that completed without explicit exit
         history = list(session.get('history', []))
         skill_scores = dict(session.get('skillScores', {}))
-        report = compute_report(history, skill_scores)
+
+        # Return cached report if available, recompute otherwise
+        report = session.get('report') or compute_report(history, skill_scores)
 
         log('INFO', 'Report fetched', sessionId=session_id[:8])
 
@@ -63,8 +53,10 @@ def lambda_handler(event, context):
             'sessionId': session_id,
             'status': session.get('status'),
             'report': report,
+            'history': history,
             'mode': session.get('mode'),
             'difficulty': session.get('difficulty'),
+            'roleInfo': session.get('roleInfo', ''),
             'createdAt': session.get('createdAt'),
         })
 

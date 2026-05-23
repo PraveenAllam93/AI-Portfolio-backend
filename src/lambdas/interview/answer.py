@@ -14,6 +14,8 @@ from interview_utils import (
     compute_report,
     get_session,
     update_session,
+    get_interview_profile,
+    update_interview_profile,
     MAX_FOLLOW_UPS_PER_TOPIC,
     response,
 )
@@ -103,7 +105,7 @@ def lambda_handler(event, context):
         is_complete = questions_asked >= total_questions
 
         if is_complete:
-            # Final question answered — generate report and close session
+            # Final question answered — generate report, close session, update profile
             report = compute_report(history, skill_scores)
             update_session(user_id, session_id, {
                 'status': 'completed',
@@ -112,6 +114,7 @@ def lambda_handler(event, context):
                 'skillScores': skill_scores,
                 'report': report,
             })
+            update_interview_profile(user_id, history, skill_scores)
             log('INFO', 'Session completed', sessionId=session_id[:8], totalAnswered=questions_asked)
             return response(200, {
                 'feedback': {
@@ -152,6 +155,7 @@ def lambda_handler(event, context):
                 new_follow_up_count = 0
                 next_topic = topic_plan[new_topic_index]['topic']
                 asked_questions = [h['question'] for h in history]
+                interview_profile = get_interview_profile(user_id)
                 next_question = generate_base_question(
                     profile=user_profile if source == 'resume' else None,
                     topic=next_topic,
@@ -159,6 +163,7 @@ def lambda_handler(event, context):
                     source=source,
                     role_info=role_info,
                     asked_questions=asked_questions,
+                    interview_profile=interview_profile,
                     correlation_id=correlation_id,
                 )
             else:

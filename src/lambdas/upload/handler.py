@@ -9,9 +9,18 @@ import re
 import uuid
 import boto3
 from boto3.dynamodb.conditions import Key
+from botocore.config import Config
 from datetime import datetime, timezone
 
-s3_client = boto3.client('s3')
+_AWS_REGION = os.environ.get('AWS_REGION', 'ap-south-1')
+# Use the regional endpoint so presigned PUT URLs don't go through the global
+# endpoint and get a 307 redirect that browsers can't follow with a body.
+s3_client = boto3.client(
+    's3',
+    region_name=_AWS_REGION,
+    endpoint_url=f'https://s3.{_AWS_REGION}.amazonaws.com',
+    config=Config(s3={'addressing_style': 'virtual'}),
+)
 dynamodb = boto3.resource('dynamodb')
 
 QUARANTINE_BUCKET = os.environ.get('QUARANTINE_BUCKET')
@@ -32,7 +41,7 @@ DYNAMODB_TABLE = os.environ.get('DYNAMODB_TABLE')
 MAX_ACTIVE_UPLOADS = int(os.environ.get('MAX_ACTIVE_UPLOADS', 5))
 
 ALLOWED_CATEGORIES = {'software_engineer', 'designer', 'marketing', 'finance'}
-ALLOWED_TEMPLATES = {'minimal', 'modern', 'bold', 'creative', 'aurora', 'nebula', 'luxury', 'executive', 'galaxy', 'codex', 'neon', 'circuit', 'navy-gold', 'cosmos'}
+ALLOWED_TEMPLATES = {'minimal', 'modern', 'bold', 'creative', 'aurora', 'nebula', 'luxury', 'executive', 'galaxy', 'codex', 'neon', 'circuit', 'navy-gold', 'cosmos', 'retro', 'luxe', 'quantum'}
 
 # Safe filename: block path separators, null bytes, and Windows reserved chars.
 # Allowlist approach was too strict (rejected spaces in names like "resume 1.pdf").

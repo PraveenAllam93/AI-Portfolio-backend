@@ -161,7 +161,8 @@ resource "aws_iam_role_policy" "quarantine_validator_dynamodb" {
 
 # =============================================================================
 # 3. RESUME INGESTION LAMBDA
-# Needs: s3:GetObject on validated, sqs:SendMessage, dynamodb:UpdateItem
+# Needs: s3:GetObject on validated, sqs:SendMessage, dynamodb:UpdateItem+GetItem,
+#        lambda:InvokeFunction (portfolio-generator, dedup fast-path only)
 # =============================================================================
 
 resource "aws_iam_role" "resume_ingestion" {
@@ -219,6 +220,20 @@ resource "aws_iam_role_policy" "resume_ingestion_dynamodb" {
   })
 }
 
+resource "aws_iam_role_policy" "resume_ingestion_invoke_portfolio" {
+  name = "invoke-portfolio-generator"
+  role = aws_iam_role.resume_ingestion.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Sid    = "InvokePortfolioGenerator"
+      Effect = "Allow"
+      Action = ["lambda:InvokeFunction"]
+      Resource = "arn:aws:lambda:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:function:${var.name_prefix}-portfolio-generator"
+    }]
+  })
+}
+
 # =============================================================================
 # 4. AI PROCESSING LAMBDA
 # Needs: secretsmanager:GetSecretValue, dynamodb:UpdateItem+PutItem,
@@ -260,7 +275,7 @@ resource "aws_iam_role_policy" "ai_processing_dynamodb" {
     Statement = [{
       Sid      = "WriteAIResults"
       Effect   = "Allow"
-      Action   = ["dynamodb:UpdateItem", "dynamodb:PutItem"]
+      Action   = ["dynamodb:UpdateItem", "dynamodb:PutItem", "dynamodb:GetItem"]
       Resource = var.dynamodb_table_arn
     }]
   })
@@ -530,10 +545,11 @@ resource "aws_lambda_function" "resume_ingestion" {
 
   environment {
     variables = {
-      VALIDATED_BUCKET = var.validated_bucket_name
-      DYNAMODB_TABLE   = var.dynamodb_table_name
-      PROCESSING_QUEUE = var.processing_queue_url
-      ENVIRONMENT      = var.environment
+      VALIDATED_BUCKET     = var.validated_bucket_name
+      DYNAMODB_TABLE       = var.dynamodb_table_name
+      PROCESSING_QUEUE     = var.processing_queue_url
+      PORTFOLIO_LAMBDA_NAME = "${var.name_prefix}-portfolio-generator"
+      ENVIRONMENT          = var.environment
     }
   }
 
@@ -581,6 +597,7 @@ resource "aws_lambda_function" "ai_processing" {
       PORTFOLIO_BUCKET      = var.portfolio_bucket_name
       ENVIRONMENT           = var.environment
       PORTFOLIO_LAMBDA_NAME = "${var.name_prefix}-portfolio-generator"
+      SQS_MAX_RECEIVE_COUNT = tostring(var.dlq_max_receive_count)
     }
   }
 
@@ -1047,6 +1064,40 @@ resource "aws_lambda_function" "ai_enhance_portfolio" {
 }
 
 # =============================================================================
+# 13. ADD CUSTOM SECTION LAMBDA
+# POST /portfolio/{userId}/custom-section — AI classifier for custom sections.
+# Needs: dynamodb:GetItem on USER#* keys, secretsmanager:GetSecretValue (OpenAI).
+# Returns a suggestion only — never writes to DynamoDB (reuses ai_enhance role).
+# =============================================================================
+
+resource "aws_lambda_function" "add_custom_section" {
+  filename         = data.archive_file.get_portfolio.output_path
+  function_name    = "${var.name_prefix}-add-custom-section"
+  role             = aws_iam_role.ai_enhance.arn
+  handler          = "add_custom_section.lambda_handler"
+  source_code_hash = data.archive_file.get_portfolio.output_base64sha256
+  runtime          = "python3.12"
+  timeout          = 29  # API Gateway max synchronous timeout
+  memory_size      = var.memory_size
+
+  reserved_concurrent_executions = var.reserved_concurrency
+
+  environment {
+    variables = {
+      DYNAMODB_TABLE     = var.dynamodb_table_name
+      OPENAI_SECRET_NAME = var.openai_api_key_secret_name
+      ALLOWED_ORIGIN     = var.allowed_origin
+      ENVIRONMENT        = var.environment
+    }
+  }
+
+  tags = merge(var.tags, {
+    Name     = "${var.name_prefix}-add-custom-section"
+    Function = "AI custom section classifier - suggestion only"
+  })
+}
+
+# =============================================================================
 # IMAGE UPLOAD URL LAMBDA
 # POST /portfolio/{userId}/image-upload-url
 # Needs: s3:PutObject on portfolio bucket assets prefix (to sign presigned PUT)
@@ -1103,6 +1154,117 @@ resource "aws_lambda_function" "get_image_upload_url" {
   tags = merge(var.tags, {
     Name     = "${var.name_prefix}-get-image-upload-url"
     Function = "Generate presigned URL for portfolio image upload"
+  })
+}
+
+# =============================================================================
+# GENERATE PROJECT IMAGE LAMBDA
+# POST /portfolio/{userId}/project-image/generate
+# Calls DALL-E 3 to generate a project/experience image, stores it in S3,
+# returns the CloudFront URL. Does NOT save to DynamoDB — suggestion only.
+# Needs: dynamodb:GetItem (read portfolio) + dynamodb:UpdateItem (rate limit counter)
+#        s3:PutObject (portfolio bucket assets) + secretsmanager:GetSecretValue (OpenAI)
+# =============================================================================
+
+resource "aws_iam_role" "generate_project_image" {
+  name               = "${var.name_prefix}-gen-project-image-role"
+  assume_role_policy = data.aws_iam_policy_document.lambda_assume_role.json
+  tags               = var.tags
+}
+
+resource "aws_iam_role_policy" "generate_project_image_logs" {
+  name   = "cloudwatch-logs"
+  role   = aws_iam_role.generate_project_image.id
+  policy = data.aws_iam_policy_document.cloudwatch_logs.json
+}
+
+resource "aws_iam_role_policy" "generate_project_image_dynamodb" {
+  name = "dynamodb-portfolio-and-ratelimit"
+  role = aws_iam_role.generate_project_image.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid    = "ReadPortfolio"
+        Effect = "Allow"
+        Action = ["dynamodb:GetItem"]
+        Resource = var.dynamodb_table_arn
+        Condition = {
+          "ForAllValues:StringLike" = {
+            "dynamodb:LeadingKeys" = ["USER#*"]
+          }
+        }
+      },
+      {
+        Sid    = "RateLimitCounter"
+        Effect = "Allow"
+        Action = ["dynamodb:UpdateItem"]
+        Resource = var.dynamodb_table_arn
+        Condition = {
+          "ForAllValues:StringLike" = {
+            "dynamodb:LeadingKeys" = ["USER#*"]
+          }
+        }
+      }
+    ]
+  })
+}
+
+resource "aws_iam_role_policy" "generate_project_image_s3" {
+  name = "s3-put-portfolio-assets"
+  role = aws_iam_role.generate_project_image.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Sid      = "PutGeneratedImage"
+      Effect   = "Allow"
+      Action   = ["s3:PutObject"]
+      Resource = "${var.portfolio_bucket_arn}/*/assets/*"
+    }]
+  })
+}
+
+resource "aws_iam_role_policy" "generate_project_image_secrets" {
+  name = "secrets-openai"
+  role = aws_iam_role.generate_project_image.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Sid    = "GetOpenAIKey"
+      Effect = "Allow"
+      Action = ["secretsmanager:GetSecretValue"]
+      Resource = "arn:aws:secretsmanager:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:secret:${var.openai_api_key_secret_name}*"
+    }]
+  })
+}
+
+resource "aws_lambda_function" "generate_project_image" {
+  filename         = data.archive_file.get_portfolio.output_path
+  function_name    = "${var.name_prefix}-generate-project-image"
+  role             = aws_iam_role.generate_project_image.arn
+  handler          = "generate_project_image.lambda_handler"
+  source_code_hash = data.archive_file.get_portfolio.output_base64sha256
+  runtime          = "python3.12"
+  timeout          = 60  # DALL-E 3 can take 15-20s + download + S3 upload
+  memory_size      = 256
+
+  reserved_concurrent_executions = var.reserved_concurrency
+
+  environment {
+    variables = {
+      DYNAMODB_TABLE          = var.dynamodb_table_name
+      PORTFOLIO_BUCKET        = var.portfolio_bucket_name
+      CLOUDFRONT_DOMAIN       = var.cloudfront_domain
+      OPENAI_SECRET_NAME      = var.openai_api_key_secret_name
+      DAILY_GENERATION_LIMIT  = "10"
+      ALLOWED_ORIGIN          = var.allowed_origin
+      ENVIRONMENT             = var.environment
+    }
+  }
+
+  tags = merge(var.tags, {
+    Name     = "${var.name_prefix}-generate-project-image"
+    Function = "AI project image generation via DALL-E 3"
   })
 }
 
@@ -1284,5 +1446,207 @@ resource "aws_lambda_function" "interview_report" {
   tags = merge(var.tags, {
     Name     = "${var.name_prefix}-interview-report"
     Function = "Interview agent - fetch final report"
+  })
+}
+
+resource "aws_lambda_function" "interview_sessions" {
+  filename         = data.archive_file.interview.output_path
+  function_name    = "${var.name_prefix}-interview-sessions"
+  role             = aws_iam_role.interview.arn
+  handler          = "sessions.lambda_handler"
+  source_code_hash = data.archive_file.interview.output_base64sha256
+  runtime          = "python3.12"
+  timeout          = 10
+  memory_size      = 256
+  layers           = [aws_lambda_layer_version.pdf_processing.arn]
+
+  reserved_concurrent_executions = var.reserved_concurrency
+
+  environment {
+    variables = {
+      DYNAMODB_TABLE     = var.dynamodb_table_name
+      OPENAI_SECRET_NAME = var.openai_api_key_secret_name
+      ALLOWED_ORIGIN     = var.allowed_origin
+      ENVIRONMENT        = var.environment
+    }
+  }
+
+  tags = merge(var.tags, {
+    Name     = "${var.name_prefix}-interview-sessions"
+    Function = "Interview agent - list past sessions"
+  })
+}
+
+# =============================================================================
+# PORTFOLIO VERSIONS — cancel upload + list/activate/delete versions
+# =============================================================================
+
+resource "aws_iam_role" "portfolio_versions" {
+  name               = "${var.name_prefix}-portfolio-versions-role"
+  assume_role_policy = data.aws_iam_policy_document.lambda_assume_role.json
+  tags               = var.tags
+}
+
+resource "aws_iam_role_policy" "portfolio_versions_logs" {
+  name   = "cloudwatch-logs"
+  role   = aws_iam_role.portfolio_versions.id
+  policy = data.aws_iam_policy_document.cloudwatch_logs.json
+}
+
+resource "aws_iam_role_policy" "portfolio_versions_dynamodb" {
+  name = "dynamodb-versions"
+  role = aws_iam_role.portfolio_versions.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Sid    = "VersionOperations"
+      Effect = "Allow"
+      Action = [
+        "dynamodb:GetItem",
+        "dynamodb:Query",
+        "dynamodb:UpdateItem",
+        "dynamodb:DeleteItem",
+      ]
+      Resource = [var.dynamodb_table_arn]
+      Condition = {
+        "ForAllValues:StringLike" = {
+          "dynamodb:LeadingKeys" = ["USER#*"]
+        }
+      }
+    }]
+  })
+}
+
+resource "aws_iam_role_policy" "portfolio_versions_s3" {
+  name = "s3-delete-versions"
+  role = aws_iam_role.portfolio_versions.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Sid      = "DeleteVersionObjects"
+      Effect   = "Allow"
+      Action   = ["s3:DeleteObject"]
+      Resource = "arn:aws:s3:::${var.portfolio_bucket_name}/*"
+    }]
+  })
+}
+
+resource "aws_iam_role_policy" "portfolio_versions_cloudfront" {
+  name = "cloudfront-invalidate"
+  role = aws_iam_role.portfolio_versions.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Sid      = "InvalidateCache"
+      Effect   = "Allow"
+      Action   = ["cloudfront:CreateInvalidation"]
+      Resource = "*"
+    }]
+  })
+}
+
+resource "aws_lambda_function" "cancel_upload" {
+  filename         = data.archive_file.get_portfolio.output_path
+  function_name    = "${var.name_prefix}-cancel-upload"
+  role             = aws_iam_role.portfolio_versions.arn
+  handler          = "cancel_upload.lambda_handler"
+  source_code_hash = data.archive_file.get_portfolio.output_base64sha256
+  runtime          = "python3.12"
+  timeout          = var.timeout
+  memory_size      = var.memory_size
+
+  reserved_concurrent_executions = var.reserved_concurrency
+
+  environment {
+    variables = {
+      DYNAMODB_TABLE = var.dynamodb_table_name
+      ALLOWED_ORIGIN = var.allowed_origin
+      ENVIRONMENT    = var.environment
+    }
+  }
+
+  tags = merge(var.tags, {
+    Name     = "${var.name_prefix}-cancel-upload"
+    Function = "Cancel an in-flight upload"
+  })
+}
+
+resource "aws_lambda_function" "list_versions" {
+  filename         = data.archive_file.get_portfolio.output_path
+  function_name    = "${var.name_prefix}-list-versions"
+  role             = aws_iam_role.portfolio_versions.arn
+  handler          = "list_versions.lambda_handler"
+  source_code_hash = data.archive_file.get_portfolio.output_base64sha256
+  runtime          = "python3.12"
+  timeout          = var.timeout
+  memory_size      = var.memory_size
+
+  reserved_concurrent_executions = var.reserved_concurrency
+
+  environment {
+    variables = {
+      DYNAMODB_TABLE = var.dynamodb_table_name
+      ALLOWED_ORIGIN = var.allowed_origin
+      ENVIRONMENT    = var.environment
+    }
+  }
+
+  tags = merge(var.tags, {
+    Name     = "${var.name_prefix}-list-versions"
+    Function = "List portfolio versions"
+  })
+}
+
+resource "aws_lambda_function" "activate_version" {
+  filename         = data.archive_file.get_portfolio.output_path
+  function_name    = "${var.name_prefix}-activate-version"
+  role             = aws_iam_role.portfolio_versions.arn
+  handler          = "activate_version.lambda_handler"
+  source_code_hash = data.archive_file.get_portfolio.output_base64sha256
+  runtime          = "python3.12"
+  timeout          = var.timeout
+  memory_size      = var.memory_size
+
+  reserved_concurrent_executions = var.reserved_concurrency
+
+  environment {
+    variables = {
+      DYNAMODB_TABLE             = var.dynamodb_table_name
+      CLOUDFRONT_DISTRIBUTION_ID = var.cloudfront_distribution_id
+      ALLOWED_ORIGIN             = var.allowed_origin
+      ENVIRONMENT                = var.environment
+    }
+  }
+
+  tags = merge(var.tags, {
+    Name     = "${var.name_prefix}-activate-version"
+    Function = "Set a portfolio version as live"
+  })
+}
+
+resource "aws_lambda_function" "delete_version" {
+  filename         = data.archive_file.get_portfolio.output_path
+  function_name    = "${var.name_prefix}-delete-version"
+  role             = aws_iam_role.portfolio_versions.arn
+  handler          = "delete_version.lambda_handler"
+  source_code_hash = data.archive_file.get_portfolio.output_base64sha256
+  runtime          = "python3.12"
+  timeout          = var.timeout
+  memory_size      = var.memory_size
+
+  reserved_concurrent_executions = var.reserved_concurrency
+
+  environment {
+    variables = {
+      DYNAMODB_TABLE   = var.dynamodb_table_name
+      PORTFOLIO_BUCKET = var.portfolio_bucket_name
+      ALLOWED_ORIGIN   = var.allowed_origin
+      ENVIRONMENT      = var.environment
+    }
+  }
+
+  tags = merge(var.tags, {
+    Name     = "${var.name_prefix}-delete-version"
+    Function = "Delete a portfolio version"
   })
 }

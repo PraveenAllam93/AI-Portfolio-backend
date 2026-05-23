@@ -218,11 +218,16 @@ module "api_gateway" {
   patch_portfolio_lambda_invoke_arn          = module.lambda.patch_portfolio_invoke_arn
   ai_enhance_portfolio_lambda_arn            = module.lambda.ai_enhance_portfolio_arn
   ai_enhance_portfolio_lambda_invoke_arn     = module.lambda.ai_enhance_portfolio_invoke_arn
+  add_custom_section_lambda_arn              = module.lambda.add_custom_section_arn
+  add_custom_section_lambda_invoke_arn       = module.lambda.add_custom_section_invoke_arn
   publish_portfolio_lambda_arn               = module.lambda.publish_portfolio_arn
   publish_portfolio_lambda_invoke_arn        = module.lambda.publish_portfolio_invoke_arn
 
   get_image_upload_url_lambda_arn        = module.lambda.get_image_upload_url_arn
   get_image_upload_url_lambda_invoke_arn = module.lambda.get_image_upload_url_invoke_arn
+
+  generate_project_image_lambda_arn        = module.lambda.generate_project_image_arn
+  generate_project_image_lambda_invoke_arn = module.lambda.generate_project_image_invoke_arn
 
   interview_start_lambda_arn         = module.lambda.interview_start_arn
   interview_start_lambda_invoke_arn  = module.lambda.interview_start_invoke_arn
@@ -230,8 +235,20 @@ module "api_gateway" {
   interview_answer_lambda_invoke_arn = module.lambda.interview_answer_invoke_arn
   interview_exit_lambda_arn          = module.lambda.interview_exit_arn
   interview_exit_lambda_invoke_arn   = module.lambda.interview_exit_invoke_arn
-  interview_report_lambda_arn        = module.lambda.interview_report_arn
-  interview_report_lambda_invoke_arn = module.lambda.interview_report_invoke_arn
+  interview_report_lambda_arn          = module.lambda.interview_report_arn
+  interview_report_lambda_invoke_arn   = module.lambda.interview_report_invoke_arn
+  interview_sessions_lambda_arn        = module.lambda.interview_sessions_arn
+  interview_sessions_lambda_invoke_arn = module.lambda.interview_sessions_invoke_arn
+
+  # Lambda integrations — portfolio versions
+  cancel_upload_lambda_arn           = module.lambda.cancel_upload_arn
+  cancel_upload_lambda_invoke_arn    = module.lambda.cancel_upload_invoke_arn
+  list_versions_lambda_arn           = module.lambda.list_versions_arn
+  list_versions_lambda_invoke_arn    = module.lambda.list_versions_invoke_arn
+  activate_version_lambda_arn        = module.lambda.activate_version_arn
+  activate_version_lambda_invoke_arn = module.lambda.activate_version_invoke_arn
+  delete_version_lambda_arn          = module.lambda.delete_version_arn
+  delete_version_lambda_invoke_arn   = module.lambda.delete_version_invoke_arn
 
   tags = local.common_tags
 }

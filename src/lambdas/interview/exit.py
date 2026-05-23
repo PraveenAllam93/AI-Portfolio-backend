@@ -10,6 +10,7 @@ from interview_utils import (
     compute_report,
     get_session,
     update_session,
+    update_interview_profile,
     response,
 )
 
@@ -58,6 +59,7 @@ def lambda_handler(event, context):
             'status': 'completed',
             'report': report,
         })
+        update_interview_profile(user_id, history, skill_scores)
 
         log('INFO', 'Session exited', sessionId=session_id[:8], answeredSoFar=len(history))
 
