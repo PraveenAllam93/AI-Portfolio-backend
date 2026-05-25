@@ -76,7 +76,9 @@ def lambda_handler(event, context):
     correlation_id = context.aws_request_id if context else 'local'
 
     # Auth: path userId must match token sub
-    path_user_id = unquote((event.get('pathParameters') or {}).get('userId', ''))
+    path_params = event.get('pathParameters') or {}
+    path_user_id = unquote(path_params.get('userId', ''))
+    upload_id = unquote(path_params.get('uploadId', ''))
     token_sub = (
         event.get('requestContext', {})
         .get('authorizer', {})
@@ -85,6 +87,9 @@ def lambda_handler(event, context):
     )
     if not path_user_id or path_user_id != token_sub:
         return _response(403, {'error': 'Forbidden'})
+
+    if not upload_id:
+        return _response(400, {'error': 'Missing uploadId'})
 
     try:
         body = json.loads(event.get('body') or '{}')
@@ -99,28 +104,9 @@ def lambda_handler(event, context):
             'allowed': sorted(ALLOWED_MIME_TYPES),
         })
 
-    # Derive extension from MIME type (ignore client-provided extension for security)
     ext = MIME_TO_EXT[content_type]
-
-    # Resolve uploadId from the current portfolio record so images are stored
-    # under {userId}/{uploadId}/assets/ alongside the rest of that portfolio's files.
-    upload_id = None
-    try:
-        table = dynamodb.Table(DYNAMODB_TABLE)
-        result = table.get_item(
-            Key={'PK': f'USER#{path_user_id}', 'SK': 'PORTFOLIO#current'},
-            ProjectionExpression='uploadId',
-        )
-        upload_id = result.get('Item', {}).get('uploadId')
-    except Exception as e:
-        _log('WARNING', 'Could not fetch uploadId from portfolio record, using flat path',
-             correlationId=correlation_id, userId=path_user_id, error=str(e))
-
     image_id = str(uuid.uuid4())
-    if upload_id:
-        s3_key = f"{path_user_id}/{upload_id}/assets/{image_id}{ext}"
-    else:
-        s3_key = f"{path_user_id}/assets/{image_id}{ext}"
+    s3_key = f"{path_user_id}/{upload_id}/assets/{image_id}{ext}"
 
     presigned_url = s3_client.generate_presigned_url(
         'put_object',

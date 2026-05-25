@@ -250,6 +250,13 @@ module "api_gateway" {
   delete_version_lambda_arn          = module.lambda.delete_version_arn
   delete_version_lambda_invoke_arn   = module.lambda.delete_version_invoke_arn
 
+  list_portfolios_lambda_arn              = module.lambda.list_portfolios_arn
+  list_portfolios_lambda_invoke_arn       = module.lambda.list_portfolios_invoke_arn
+  toggle_portfolio_live_lambda_arn        = module.lambda.toggle_portfolio_live_arn
+  toggle_portfolio_live_lambda_invoke_arn = module.lambda.toggle_portfolio_live_invoke_arn
+  delete_portfolio_lambda_arn             = module.lambda.delete_portfolio_arn
+  delete_portfolio_lambda_invoke_arn      = module.lambda.delete_portfolio_invoke_arn
+
   tags = local.common_tags
 }
 

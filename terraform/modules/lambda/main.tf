@@ -1586,6 +1586,7 @@ resource "aws_lambda_function" "list_versions" {
   environment {
     variables = {
       DYNAMODB_TABLE = var.dynamodb_table_name
+      CLOUDFRONT_URL = "https://${var.cloudfront_domain}"
       ALLOWED_ORIGIN = var.allowed_origin
       ENVIRONMENT    = var.environment
     }
@@ -1648,5 +1649,212 @@ resource "aws_lambda_function" "delete_version" {
   tags = merge(var.tags, {
     Name     = "${var.name_prefix}-delete-version"
     Function = "Delete a portfolio version"
+  })
+}
+
+# =============================================================================
+# LIST PORTFOLIOS
+# =============================================================================
+
+resource "aws_iam_role" "list_portfolios" {
+  name               = "${var.name_prefix}-list-portfolios-role"
+  assume_role_policy = data.aws_iam_policy_document.lambda_assume_role.json
+  tags               = var.tags
+}
+
+resource "aws_iam_role_policy" "list_portfolios_logs" {
+  name   = "cloudwatch-logs"
+  role   = aws_iam_role.list_portfolios.id
+  policy = data.aws_iam_policy_document.cloudwatch_logs.json
+}
+
+resource "aws_iam_role_policy" "list_portfolios_dynamodb" {
+  name = "dynamodb-list"
+  role = aws_iam_role.list_portfolios.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Sid    = "ListPortfolios"
+      Effect = "Allow"
+      Action = ["dynamodb:Query", "dynamodb:GetItem"]
+      Resource = [var.dynamodb_table_arn]
+      Condition = {
+        "ForAllValues:StringLike" = {
+          "dynamodb:LeadingKeys" = ["USER#*"]
+        }
+      }
+    }]
+  })
+}
+
+resource "aws_lambda_function" "list_portfolios" {
+  filename         = data.archive_file.get_portfolio.output_path
+  function_name    = "${var.name_prefix}-list-portfolios"
+  role             = aws_iam_role.list_portfolios.arn
+  handler          = "list_portfolios.lambda_handler"
+  source_code_hash = data.archive_file.get_portfolio.output_base64sha256
+  runtime          = "python3.12"
+  timeout          = var.timeout
+  memory_size      = var.memory_size
+
+  reserved_concurrent_executions = var.reserved_concurrency
+
+  environment {
+    variables = {
+      DYNAMODB_TABLE = var.dynamodb_table_name
+      CLOUDFRONT_URL = "https://${var.cloudfront_domain}"
+      ALLOWED_ORIGIN = var.allowed_origin
+      ENVIRONMENT    = var.environment
+    }
+  }
+
+  tags = merge(var.tags, {
+    Name     = "${var.name_prefix}-list-portfolios"
+    Function = "List all portfolios for a user"
+  })
+}
+
+# =============================================================================
+# TOGGLE PORTFOLIO LIVE
+# =============================================================================
+
+resource "aws_iam_role" "toggle_portfolio_live" {
+  name               = "${var.name_prefix}-toggle-portfolio-live-role"
+  assume_role_policy = data.aws_iam_policy_document.lambda_assume_role.json
+  tags               = var.tags
+}
+
+resource "aws_iam_role_policy" "toggle_portfolio_live_logs" {
+  name   = "cloudwatch-logs"
+  role   = aws_iam_role.toggle_portfolio_live.id
+  policy = data.aws_iam_policy_document.cloudwatch_logs.json
+}
+
+resource "aws_iam_role_policy" "toggle_portfolio_live_dynamodb" {
+  name = "dynamodb-toggle"
+  role = aws_iam_role.toggle_portfolio_live.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Sid    = "ToggleLive"
+      Effect = "Allow"
+      Action = ["dynamodb:GetItem", "dynamodb:UpdateItem"]
+      Resource = [var.dynamodb_table_arn]
+      Condition = {
+        "ForAllValues:StringLike" = {
+          "dynamodb:LeadingKeys" = ["USER#*"]
+        }
+      }
+    }]
+  })
+}
+
+resource "aws_lambda_function" "toggle_portfolio_live" {
+  filename         = data.archive_file.get_portfolio.output_path
+  function_name    = "${var.name_prefix}-toggle-portfolio-live"
+  role             = aws_iam_role.toggle_portfolio_live.arn
+  handler          = "toggle_portfolio_live.lambda_handler"
+  source_code_hash = data.archive_file.get_portfolio.output_base64sha256
+  runtime          = "python3.12"
+  timeout          = var.timeout
+  memory_size      = var.memory_size
+
+  reserved_concurrent_executions = var.reserved_concurrency
+
+  environment {
+    variables = {
+      DYNAMODB_TABLE = var.dynamodb_table_name
+      ALLOWED_ORIGIN = var.allowed_origin
+      ENVIRONMENT    = var.environment
+    }
+  }
+
+  tags = merge(var.tags, {
+    Name     = "${var.name_prefix}-toggle-portfolio-live"
+    Function = "Toggle portfolio isLive flag"
+  })
+}
+
+# =============================================================================
+# DELETE PORTFOLIO
+# =============================================================================
+
+resource "aws_iam_role" "delete_portfolio" {
+  name               = "${var.name_prefix}-delete-portfolio-role"
+  assume_role_policy = data.aws_iam_policy_document.lambda_assume_role.json
+  tags               = var.tags
+}
+
+resource "aws_iam_role_policy" "delete_portfolio_logs" {
+  name   = "cloudwatch-logs"
+  role   = aws_iam_role.delete_portfolio.id
+  policy = data.aws_iam_policy_document.cloudwatch_logs.json
+}
+
+resource "aws_iam_role_policy" "delete_portfolio_dynamodb" {
+  name = "dynamodb-delete-portfolio"
+  role = aws_iam_role.delete_portfolio.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Sid    = "DeletePortfolio"
+      Effect = "Allow"
+      Action = ["dynamodb:GetItem", "dynamodb:Query", "dynamodb:DeleteItem"]
+      Resource = [var.dynamodb_table_arn]
+      Condition = {
+        "ForAllValues:StringLike" = {
+          "dynamodb:LeadingKeys" = ["USER#*"]
+        }
+      }
+    }]
+  })
+}
+
+resource "aws_iam_role_policy" "delete_portfolio_s3" {
+  name = "s3-delete-portfolio"
+  role = aws_iam_role.delete_portfolio.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid      = "ListPortfolioObjects"
+        Effect   = "Allow"
+        Action   = ["s3:ListBucket"]
+        Resource = "arn:aws:s3:::${var.portfolio_bucket_name}"
+      },
+      {
+        Sid      = "DeletePortfolioObjects"
+        Effect   = "Allow"
+        Action   = ["s3:DeleteObject"]
+        Resource = "arn:aws:s3:::${var.portfolio_bucket_name}/*"
+      }
+    ]
+  })
+}
+
+resource "aws_lambda_function" "delete_portfolio" {
+  filename         = data.archive_file.get_portfolio.output_path
+  function_name    = "${var.name_prefix}-delete-portfolio"
+  role             = aws_iam_role.delete_portfolio.arn
+  handler          = "delete_portfolio.lambda_handler"
+  source_code_hash = data.archive_file.get_portfolio.output_base64sha256
+  runtime          = "python3.12"
+  timeout          = var.timeout
+  memory_size      = var.memory_size
+
+  reserved_concurrent_executions = var.reserved_concurrency
+
+  environment {
+    variables = {
+      DYNAMODB_TABLE   = var.dynamodb_table_name
+      PORTFOLIO_BUCKET = var.portfolio_bucket_name
+      ALLOWED_ORIGIN   = var.allowed_origin
+      ENVIRONMENT      = var.environment
+    }
+  }
+
+  tags = merge(var.tags, {
+    Name     = "${var.name_prefix}-delete-portfolio"
+    Function = "Delete an entire portfolio and all its versions"
   })
 }

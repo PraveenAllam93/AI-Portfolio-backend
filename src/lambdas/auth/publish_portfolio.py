@@ -67,7 +67,9 @@ def lambda_handler(event, context):
     correlation_id = context.aws_request_id if context else 'local'
 
     # Authorization: path userId must match token sub
-    path_user_id = unquote((event.get('pathParameters') or {}).get('userId', ''))
+    path_params = event.get('pathParameters') or {}
+    path_user_id = unquote(path_params.get('userId', ''))
+    upload_id = unquote(path_params.get('uploadId', ''))
     token_sub = (
         event.get('requestContext', {})
         .get('authorizer', {})
@@ -79,6 +81,9 @@ def lambda_handler(event, context):
         _log('WARNING', 'Publish auth mismatch', correlationId=correlation_id)
         return _response(403, {'error': 'Forbidden'})
 
+    if not upload_id:
+        return _response(400, {'error': 'Missing uploadId'})
+
     if not PORTFOLIO_LAMBDA_NAME:
         _log('ERROR', 'PORTFOLIO_LAMBDA_NAME not configured', correlationId=correlation_id)
         return _response(500, {'error': 'Internal server error'})
@@ -89,6 +94,7 @@ def lambda_handler(event, context):
             InvocationType='RequestResponse',
             Payload=json.dumps({
                 'userId': path_user_id,
+                'uploadId': upload_id,
                 'trigger': 'publish',
                 'target': 'publish',
             }),

@@ -277,3 +277,28 @@ output "delete_version_arn" {
 output "delete_version_invoke_arn" {
   value = aws_lambda_function.delete_version.invoke_arn
 }
+
+
+# List Portfolios Lambda
+output "list_portfolios_arn" {
+  value = aws_lambda_function.list_portfolios.arn
+}
+output "list_portfolios_invoke_arn" {
+  value = aws_lambda_function.list_portfolios.invoke_arn
+}
+
+# Toggle Portfolio Live Lambda
+output "toggle_portfolio_live_arn" {
+  value = aws_lambda_function.toggle_portfolio_live.arn
+}
+output "toggle_portfolio_live_invoke_arn" {
+  value = aws_lambda_function.toggle_portfolio_live.invoke_arn
+}
+
+# Delete Portfolio Lambda
+output "delete_portfolio_arn" {
+  value = aws_lambda_function.delete_portfolio.arn
+}
+output "delete_portfolio_invoke_arn" {
+  value = aws_lambda_function.delete_portfolio.invoke_arn
+}

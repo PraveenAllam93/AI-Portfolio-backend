@@ -79,9 +79,8 @@ def lambda_handler(event, context):
     # ------------------------------------------------------------------
     # Authorization: path userId must exactly match the token's sub claim.
     # ------------------------------------------------------------------
-    path_user_id = unquote(
-        (event.get('pathParameters') or {}).get('userId', '')
-    )
+    path_params = event.get('pathParameters') or {}
+    path_user_id = unquote(path_params.get('userId', ''))
     token_sub = (
         event.get('requestContext', {})
         .get('authorizer', {})

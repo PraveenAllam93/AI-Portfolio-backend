@@ -27,7 +27,9 @@ def _log(level: str, message: str, **kwargs) -> None:
 def lambda_handler(event, context):
     correlation_id = context.aws_request_id if context else 'local'
     try:
-        user_id = event['pathParameters'].get('userId')
+        path_params = event.get('pathParameters') or {}
+        user_id = path_params.get('userId')
+        upload_id = path_params.get('uploadId')
         requesting_user_id = event['requestContext']['authorizer']['claims']['sub']
 
         if user_id != requesting_user_id:
@@ -35,32 +37,43 @@ def lambda_handler(event, context):
                  requestingUserId=requesting_user_id, requestedUserId=user_id)
             return _response(403, {'error': 'Access denied'})
 
+        if not upload_id:
+            return _response(400, {'error': 'Missing uploadId'})
+
         table = dynamodb.Table(DYNAMODB_TABLE)
 
-        # Get active version from PORTFOLIO#current
+        # Get active version from PORTFOLIO#{uploadId}
         current_res = table.get_item(
-            Key={'PK': f'USER#{user_id}', 'SK': 'PORTFOLIO#current'}
+            Key={'PK': f'USER#{user_id}', 'SK': f'PORTFOLIO#{upload_id}'}
         )
         active_version = None
         if 'Item' in current_res:
             active_version = current_res['Item'].get('activeVersion')
 
-        # Query all version snapshot records
+        # Query all version snapshot records for this upload
         response = table.query(
             KeyConditionExpression=(
                 Key('PK').eq(f'USER#{user_id}') &
-                Key('SK').begins_with('PORTFOLIO#VERSION#')
+                Key('SK').begins_with(f'PORTFOLIO#{upload_id}#VERSION#')
             )
         )
+
+        cloudfront_url = os.environ.get('CLOUDFRONT_URL', '').rstrip('/')
 
         versions = []
         for item in response.get('Items', []):
             sk = item.get('SK', '')
-            version_id = sk.replace('PORTFOLIO#VERSION#', '')
+            version_id = sk.replace(f'PORTFOLIO#{upload_id}#VERSION#', '')
+            portfolio_path = item.get('portfolioPath', '')
+            portfolio_url = (
+                f'{cloudfront_url}/{portfolio_path}/index.html'
+                if cloudfront_url and portfolio_path else None
+            )
             versions.append({
                 'versionId': version_id,
                 'version': item.get('version'),
-                'portfolioPath': item.get('portfolioPath'),
+                'portfolioPath': portfolio_path,
+                'portfolioUrl': portfolio_url,
                 'templateId': item.get('templateId'),
                 'createdAt': item.get('createdAt'),
                 'isActive': version_id == active_version,

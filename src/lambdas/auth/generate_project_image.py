@@ -267,7 +267,9 @@ def _store_image(image_bytes: bytes, user_id: str, upload_id: str | None, correl
 def lambda_handler(event, context):
     correlation_id = context.aws_request_id if context else 'local'
 
-    path_user_id = unquote((event.get('pathParameters') or {}).get('userId', ''))
+    path_params = event.get('pathParameters') or {}
+    path_user_id = unquote(path_params.get('userId', ''))
+    upload_id = unquote(path_params.get('uploadId', ''))
     token_sub = (
         event.get('requestContext', {})
         .get('authorizer', {})
@@ -277,6 +279,9 @@ def lambda_handler(event, context):
     if not path_user_id or path_user_id != token_sub:
         _log('WARNING', 'Auth mismatch', correlationId=correlation_id)
         return _response(403, {'error': 'Forbidden'})
+
+    if not upload_id:
+        return _response(400, {'error': 'Missing uploadId'})
 
     try:
         body = json.loads(event.get('body') or '{}')
@@ -309,8 +314,8 @@ def lambda_handler(event, context):
     try:
         table = dynamodb.Table(DYNAMODB_TABLE)
         result = table.get_item(
-            Key={'PK': f'USER#{path_user_id}', 'SK': 'PORTFOLIO#current'},
-            ProjectionExpression='parsedData, #cat, #tid, uploadId',
+            Key={'PK': f'USER#{path_user_id}', 'SK': f'PORTFOLIO#{upload_id}'},
+            ProjectionExpression='parsedData, #cat, #tid',
             ExpressionAttributeNames={
                 '#cat': 'category',
                 '#tid': 'templateId',
@@ -326,7 +331,6 @@ def lambda_handler(event, context):
 
     category = result['Item'].get('category', 'software_engineer')
     template_id = result['Item'].get('templateId', 'neon')
-    upload_id = result['Item'].get('uploadId')
 
     if item_data_override and isinstance(item_data_override, dict):
         # Use data passed directly from the frontend

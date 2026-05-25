@@ -46,8 +46,9 @@ def lambda_handler(event, context):
     """Get portfolio data for a user."""
     correlation_id = context.aws_request_id if context else 'local'
     try:
-        # Get user ID from path parameter
-        user_id = event['pathParameters'].get('userId')
+        path_params = event.get('pathParameters') or {}
+        user_id = path_params.get('userId')
+        upload_id = path_params.get('uploadId')
 
         # Get requesting user's ID from Cognito claims
         requesting_user_id = (
@@ -58,10 +59,10 @@ def lambda_handler(event, context):
             "Portfolio request",
             correlationId=correlation_id,
             requestedUserId=user_id,
+            uploadId=upload_id,
         )
 
         # Authorization: users can only access their own portfolio.
-        # Return 403 — not 404 — so we don't enumerate valid user IDs.
         if user_id != requesting_user_id:
             _log_info(
                 "Access denied: userId mismatch",
@@ -71,12 +72,15 @@ def lambda_handler(event, context):
             )
             return _response(403, {'error': 'Access denied'})
 
+        if not upload_id:
+            return _response(400, {'error': 'Missing uploadId'})
+
         # Get portfolio from DynamoDB
         table = dynamodb.Table(DYNAMODB_TABLE)
         response = table.get_item(
             Key={
                 'PK': f'USER#{user_id}',
-                'SK': 'PORTFOLIO#current',
+                'SK': f'PORTFOLIO#{upload_id}',
             }
         )
 
@@ -88,6 +92,7 @@ def lambda_handler(event, context):
         # Return portfolio data
         return _response(200, {
             'userId': user_id,
+            'uploadId': upload_id,
             'status': item.get('status'),
             'portfolioPath': item.get('portfolioPath'),
             'parsedData': item.get('parsedData'),
@@ -95,6 +100,8 @@ def lambda_handler(event, context):
             'category': item.get('category', 'software_engineer'),
             'templateId': item.get('templateId', 'minimal'),
             'version': item.get('version'),
+            'isLive': item.get('isLive', False),
+            'activeVersion': item.get('activeVersion'),
             'createdAt': item.get('createdAt'),
             'updatedAt': item.get('updatedAt'),
             'sectionOrder': item.get('sectionOrder'),

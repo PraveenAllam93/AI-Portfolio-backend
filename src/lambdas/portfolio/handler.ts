@@ -93,10 +93,15 @@ export async function lambdaHandler(event: LambdaEvent, context: LambdaContext):
 		log('INFO', 'Portfolio generation started', { correlationId, userId, uploadId });
 
 		// Fetch portfolio data from DynamoDB
+		if (!uploadId) {
+			log('ERROR', 'Missing uploadId', { correlationId, userId });
+			return { statusCode: 400, body: 'Missing uploadId' };
+		}
+
 		const getResult = await dynamodb.send(
 			new GetItemCommand({
 				TableName: DYNAMODB_TABLE,
-				Key: marshall({ PK: `USER#${userId}`, SK: 'PORTFOLIO#current' }),
+				Key: marshall({ PK: `USER#${userId}`, SK: `PORTFOLIO#${uploadId}` }),
 			})
 		);
 
@@ -140,7 +145,7 @@ export async function lambdaHandler(event: LambdaEvent, context: LambdaContext):
 			true // publishMode — strips editor JS + editable attrs, injects CSP
 		);
 
-		const basePath = target === 'draft' ? `${userId}/draft` : `${userId}/v${version}`;
+		const basePath = target === 'draft' ? `${userId}/${uploadId}/draft` : `${userId}/${uploadId}/v${version}`;
 
 		await s3.send(
 			new PutObjectCommand({
@@ -161,7 +166,7 @@ export async function lambdaHandler(event: LambdaEvent, context: LambdaContext):
 			await dynamodb.send(
 				new UpdateItemCommand({
 					TableName: DYNAMODB_TABLE,
-					Key: marshall({ PK: `USER#${userId}`, SK: `PORTFOLIO#VERSION#${versionId}` }),
+					Key: marshall({ PK: `USER#${userId}`, SK: `PORTFOLIO#${uploadId}#VERSION#${versionId}` }),
 					UpdateExpression:
 						'SET #version = :version, portfolioPath = :path, templateId = :template, createdAt = :createdAt',
 					ExpressionAttributeNames: { '#version': 'version' },
@@ -177,7 +182,7 @@ export async function lambdaHandler(event: LambdaEvent, context: LambdaContext):
 			await dynamodb.send(
 				new UpdateItemCommand({
 					TableName: DYNAMODB_TABLE,
-					Key: marshall({ PK: `USER#${userId}`, SK: 'PORTFOLIO#current' }),
+					Key: marshall({ PK: `USER#${userId}`, SK: `PORTFOLIO#${uploadId}` }),
 					UpdateExpression:
 						'SET #status = :status, portfolioPath = :path, updatedAt = :updatedAt, #version = :version, activeVersion = :activeVersion',
 					ExpressionAttributeNames: { '#status': 'status', '#version': 'version' },
@@ -214,7 +219,7 @@ export async function lambdaHandler(event: LambdaEvent, context: LambdaContext):
 						new CreateInvalidationCommand({
 							DistributionId: CLOUDFRONT_DISTRIBUTION_ID,
 							InvalidationBatch: {
-								Paths: { Quantity: 1, Items: [`/${userId}/*`] },
+								Paths: { Quantity: 1, Items: [`/${userId}/${uploadId}/*`] },
 								CallerReference: correlationId,
 							},
 						})

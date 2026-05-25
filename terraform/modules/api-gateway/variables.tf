@@ -209,3 +209,30 @@ variable "delete_version_lambda_invoke_arn" {
   description = "Invoke ARN of the delete version Lambda"
   type        = string
 }
+
+variable "list_portfolios_lambda_arn" {
+  description = "ARN of the list portfolios Lambda"
+  type        = string
+}
+variable "list_portfolios_lambda_invoke_arn" {
+  description = "Invoke ARN of the list portfolios Lambda"
+  type        = string
+}
+
+variable "delete_portfolio_lambda_arn" {
+  description = "ARN of the delete portfolio Lambda"
+  type        = string
+}
+variable "delete_portfolio_lambda_invoke_arn" {
+  description = "Invoke ARN of the delete portfolio Lambda"
+  type        = string
+}
+
+variable "toggle_portfolio_live_lambda_arn" {
+  description = "ARN of the toggle portfolio live Lambda"
+  type        = string
+}
+variable "toggle_portfolio_live_lambda_invoke_arn" {
+  description = "Invoke ARN of the toggle portfolio live Lambda"
+  type        = string
+}

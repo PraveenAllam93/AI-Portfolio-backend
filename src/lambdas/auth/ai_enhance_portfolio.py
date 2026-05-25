@@ -184,7 +184,9 @@ def _call_openai(prompt, api_key, max_tokens=400):
 def lambda_handler(event, context):
     correlation_id = context.aws_request_id if context else 'local'
 
-    path_user_id = unquote((event.get('pathParameters') or {}).get('userId', ''))
+    path_params = event.get('pathParameters') or {}
+    path_user_id = unquote(path_params.get('userId', ''))
+    upload_id = unquote(path_params.get('uploadId', ''))
     token_sub = (
         event.get('requestContext', {})
         .get('authorizer', {})
@@ -196,6 +198,9 @@ def lambda_handler(event, context):
         _log('WARNING', 'AI enhance auth mismatch', correlationId=correlation_id)
         return _response(403, {'error': 'Forbidden'})
 
+    if not upload_id:
+        return _response(400, {'error': 'Missing uploadId'})
+
     try:
         body = json.loads(event.get('body') or '{}')
     except (json.JSONDecodeError, ValueError):
@@ -203,7 +208,7 @@ def lambda_handler(event, context):
 
     # Shape D: LLM-generated portfolio suggestions (no instruction needed)
     if body.get('action') == 'analyze_and_suggest':
-        return _handle_analyze_and_suggest(body, path_user_id, correlation_id)
+        return _handle_analyze_and_suggest(body, path_user_id, upload_id, correlation_id)
 
     instruction = str(body.get('instruction', '')).strip()
     if not instruction:
@@ -214,9 +219,9 @@ def lambda_handler(event, context):
         })
 
     if 'field' in body:
-        return _handle_field_enhance(body, path_user_id, instruction, correlation_id)
+        return _handle_field_enhance(body, path_user_id, upload_id, instruction, correlation_id)
     if 'section' in body:
-        return _handle_section_enhance(body, path_user_id, instruction, correlation_id)
+        return _handle_section_enhance(body, path_user_id, upload_id, instruction, correlation_id)
 
     return _response(400, {'error': 'Request must include either "field", "section", or action="analyze_and_suggest"'})
 
@@ -226,7 +231,7 @@ def lambda_handler(event, context):
 # ---------------------------------------------------------------------------
 
 
-def _handle_field_enhance(body, path_user_id, instruction, correlation_id):
+def _handle_field_enhance(body, path_user_id, upload_id, instruction, correlation_id):
     field = body.get('field', '')
 
     if field not in _ALLOWED_FIELDS:
@@ -237,7 +242,7 @@ def _handle_field_enhance(body, path_user_id, instruction, correlation_id):
     try:
         table = dynamodb.Table(DYNAMODB_TABLE)
         result = table.get_item(
-            Key={'PK': f'USER#{path_user_id}', 'SK': 'PORTFOLIO#current'},
+            Key={'PK': f'USER#{path_user_id}', 'SK': f'PORTFOLIO#{upload_id}'},
             ProjectionExpression='portfolioContent',
         )
 
@@ -295,7 +300,7 @@ def _handle_field_enhance(body, path_user_id, instruction, correlation_id):
 # ---------------------------------------------------------------------------
 
 
-def _handle_section_enhance(body, path_user_id, instruction, correlation_id):
+def _handle_section_enhance(body, path_user_id, upload_id, instruction, correlation_id):
     section = body.get('section', '')
 
     if section != 'skills' and section not in _SECTION_ITEM_FIELDS:
@@ -305,7 +310,7 @@ def _handle_section_enhance(body, path_user_id, instruction, correlation_id):
     try:
         table = dynamodb.Table(DYNAMODB_TABLE)
         result = table.get_item(
-            Key={'PK': f'USER#{path_user_id}', 'SK': 'PORTFOLIO#current'},
+            Key={'PK': f'USER#{path_user_id}', 'SK': f'PORTFOLIO#{upload_id}'},
             ProjectionExpression='parsedData, #cat',
             ExpressionAttributeNames={'#cat': 'category'},
         )
@@ -734,7 +739,7 @@ _CATEGORY_GUIDANCE_DEFAULT = (
 )
 
 
-def _handle_analyze_and_suggest(body, path_user_id, correlation_id):
+def _handle_analyze_and_suggest(body, path_user_id, upload_id, correlation_id):
     # Prefer client-sent state (always reflects what the user currently sees,
     # even if auto-save hasn't flushed to DynamoDB yet). Fall back to DynamoDB.
     client_parsed_data = body.get('parsedData')
@@ -751,7 +756,7 @@ def _handle_analyze_and_suggest(body, path_user_id, correlation_id):
         try:
             table = dynamodb.Table(DYNAMODB_TABLE)
             result = table.get_item(
-                Key={'PK': f'USER#{path_user_id}', 'SK': 'PORTFOLIO#current'},
+                Key={'PK': f'USER#{path_user_id}', 'SK': f'PORTFOLIO#{upload_id}'},
                 ProjectionExpression='parsedData, portfolioContent, #cat',
                 ExpressionAttributeNames={'#cat': 'category'},
             )

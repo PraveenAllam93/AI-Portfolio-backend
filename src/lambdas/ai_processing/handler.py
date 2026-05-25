@@ -466,14 +466,15 @@ def _trigger_portfolio_generation(
     table = dynamodb.Table(DYNAMODB_TABLE)
     table.put_item(Item={
         'PK': f'USER#{user_id}',
-        'SK': 'PORTFOLIO#current',
+        'SK': f'PORTFOLIO#{upload_id}',
         'userId': user_id,
         'uploadId': upload_id,
         'category': category,
         'templateId': template_id,
         'parsedData': parsed_data,
         'portfolioContent': portfolio_content,
-        'version': 1,
+        'version': 0,
+        'isLive': False,
         'createdAt': datetime.now(timezone.utc).isoformat(),
         'status': 'GENERATING',
     })

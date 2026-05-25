@@ -162,7 +162,7 @@ def _sanitize_item(item: object) -> dict:
 # ---------------------------------------------------------------------------
 
 
-def _trigger_rebuild(path_user_id: str) -> None:
+def _trigger_rebuild(path_user_id: str, upload_id: str) -> None:
     """Invoke the portfolio generator to rebuild the draft asynchronously."""
     if PORTFOLIO_LAMBDA_NAME:
         lambda_client.invoke(
@@ -170,6 +170,7 @@ def _trigger_rebuild(path_user_id: str) -> None:
             InvocationType='Event',
             Payload=json.dumps({
                 'userId': path_user_id,
+                'uploadId': upload_id,
                 'trigger': 'manual_patch',
                 'target': 'draft',
             }),
@@ -187,7 +188,9 @@ def lambda_handler(event, context):
     # ------------------------------------------------------------------
     # Authorization: path userId must exactly match the token's sub claim.
     # ------------------------------------------------------------------
-    path_user_id = unquote((event.get('pathParameters') or {}).get('userId', ''))
+    path_params = event.get('pathParameters') or {}
+    path_user_id = unquote(path_params.get('userId', ''))
+    upload_id = unquote(path_params.get('uploadId', ''))
     token_sub = (
         event.get('requestContext', {})
         .get('authorizer', {})
@@ -198,6 +201,9 @@ def lambda_handler(event, context):
     if not path_user_id or path_user_id != token_sub:
         _log('WARNING', 'Patch auth mismatch', correlationId=correlation_id)
         return _response(403, {'error': 'Forbidden'})
+
+    if not upload_id:
+        return _response(400, {'error': 'Missing uploadId'})
 
     # ------------------------------------------------------------------
     # Parse body
@@ -217,12 +223,12 @@ def lambda_handler(event, context):
         return _response(400, {'error': 'Provide either "field" or "section", not both'})
 
     if has_field:
-        return _handle_field_patch(body, path_user_id, correlation_id)
+        return _handle_field_patch(body, path_user_id, upload_id, correlation_id)
 
-    return _handle_section_patch(body, path_user_id, correlation_id)
+    return _handle_section_patch(body, path_user_id, upload_id, correlation_id)
 
 
-def _handle_field_patch(body: dict, path_user_id: str, correlation_id: str) -> dict:
+def _handle_field_patch(body: dict, path_user_id: str, upload_id: str, correlation_id: str) -> dict:
     """Patch a scalar field — portfolioContent.* or top-level templateId."""
     field = body.get('field', '')
     value = body.get('value')
@@ -249,7 +255,7 @@ def _handle_field_patch(body: dict, path_user_id: str, correlation_id: str) -> d
                     ':updatedAt': datetime.now(timezone.utc).isoformat(),
                 },
             )
-            _trigger_rebuild(path_user_id)
+            _trigger_rebuild(path_user_id, upload_id)
             _log('INFO', 'Portfolio template changed',
                  correlationId=correlation_id,
                  userId=path_user_id,
@@ -283,7 +289,7 @@ def _handle_field_patch(body: dict, path_user_id: str, correlation_id: str) -> d
         table.update_item(
             Key={
                 'PK': f'USER#{path_user_id}',
-                'SK': 'PORTFOLIO#current',
+                'SK': f'PORTFOLIO#{upload_id}',
             },
             UpdateExpression='SET #pc.#field = :value, #updatedAt = :updatedAt',
             ConditionExpression='attribute_exists(#pk)',
@@ -326,7 +332,7 @@ _ALL_SECTION_KEYS = {
 }
 
 
-def _handle_config_patch(data: object, path_user_id: str, correlation_id: str) -> dict:
+def _handle_config_patch(data: object, path_user_id: str, upload_id: str, correlation_id: str) -> dict:
     """
     Update sectionOrder and/or hiddenSections at the record root level.
     data = { sectionOrder?: string[], hiddenSections?: string[] }
@@ -365,7 +371,7 @@ def _handle_config_patch(data: object, path_user_id: str, correlation_id: str) -
         table.update_item(
             Key={
                 'PK': f'USER#{path_user_id}',
-                'SK': 'PORTFOLIO#current',
+                'SK': f'PORTFOLIO#{upload_id}',
             },
             UpdateExpression='SET ' + ', '.join(update_parts) + ', #updatedAt = :updatedAt',
             ConditionExpression='attribute_exists(#pk)',
@@ -392,14 +398,14 @@ def _handle_config_patch(data: object, path_user_id: str, correlation_id: str) -
         return _response(500, {'error': 'Internal server error'})
 
 
-def _handle_section_patch(body: dict, path_user_id: str, correlation_id: str) -> dict:
+def _handle_section_patch(body: dict, path_user_id: str, upload_id: str, correlation_id: str) -> dict:
     """New behaviour: replace a section in parsedData (or update root-level config)."""
     section = body.get('section', '')
     data = body.get('data')
 
     # 'config' is a special section stored at the record root (not parsedData)
     if section == 'config':
-        return _handle_config_patch(data, path_user_id, correlation_id)
+        return _handle_config_patch(data, path_user_id, upload_id, correlation_id)
 
     all_sections = (
         set(_ALLOWED_ARRAY_SECTIONS)
@@ -481,7 +487,7 @@ def _handle_section_patch(body: dict, path_user_id: str, correlation_id: str) ->
         table.update_item(
             Key={
                 'PK': f'USER#{path_user_id}',
-                'SK': 'PORTFOLIO#current',
+                'SK': f'PORTFOLIO#{upload_id}',
             },
             UpdateExpression='SET parsedData.#section = :data, #updatedAt = :updatedAt',
             ConditionExpression='attribute_exists(#pk)',

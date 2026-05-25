@@ -22,27 +22,32 @@ def _log(level: str, message: str, **kwargs) -> None:
 def lambda_handler(event, context):
     correlation_id = context.aws_request_id if context else 'local'
     try:
-        user_id = event['pathParameters'].get('userId')
-        version_id = event['pathParameters'].get('versionId')
+        path_params = event.get('pathParameters') or {}
+        user_id = path_params.get('userId')
+        upload_id = path_params.get('uploadId')
+        version_id = path_params.get('versionId')
         requesting_user_id = event['requestContext']['authorizer']['claims']['sub']
 
         if user_id != requesting_user_id:
             return _response(403, {'error': 'Access denied'})
 
+        if not upload_id:
+            return _response(400, {'error': 'Missing uploadId'})
+
         table = dynamodb.Table(DYNAMODB_TABLE)
 
-        # Verify the version exists and belongs to this user
+        # Verify the version exists and belongs to this upload
         version_res = table.get_item(
-            Key={'PK': f'USER#{user_id}', 'SK': f'PORTFOLIO#VERSION#{version_id}'}
+            Key={'PK': f'USER#{user_id}', 'SK': f'PORTFOLIO#{upload_id}#VERSION#{version_id}'}
         )
         if 'Item' not in version_res:
             return _response(404, {'error': 'Version not found'})
 
         portfolio_path = version_res['Item'].get('portfolioPath', '')
 
-        # Point PORTFOLIO#current at this version
+        # Update PORTFOLIO#{uploadId} to point at this version
         table.update_item(
-            Key={'PK': f'USER#{user_id}', 'SK': 'PORTFOLIO#current'},
+            Key={'PK': f'USER#{user_id}', 'SK': f'PORTFOLIO#{upload_id}'},
             UpdateExpression='SET activeVersion = :v, portfolioPath = :path, updatedAt = :now',
             ExpressionAttributeValues={
                 ':v': version_id,
@@ -57,7 +62,7 @@ def lambda_handler(event, context):
                 cf_client.create_invalidation(
                     DistributionId=CLOUDFRONT_DISTRIBUTION_ID,
                     InvalidationBatch={
-                        'Paths': {'Quantity': 1, 'Items': [f'/{user_id}/*']},
+                        'Paths': {'Quantity': 1, 'Items': [f'/{user_id}/{upload_id}/*']},
                         'CallerReference': correlation_id
                     }
                 )
