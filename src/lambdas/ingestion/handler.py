@@ -196,7 +196,8 @@ def lambda_handler(event, context):
             })
             # Trigger portfolio generation directly with the cached data.
             _trigger_portfolio_generation(
-                user_id, upload_id, category, template_id, correlation_id
+                user_id, upload_id, category, template_id, correlation_id,
+                cached['parsedData'], cached['portfolioContent'],
             )
             return {'statusCode': 200, 'body': 'Used cached result'}
 
@@ -298,8 +299,30 @@ def _trigger_portfolio_generation(
     category: str,
     template_id: str,
     correlation_id: str,
+    parsed_data: dict | None = None,
+    portfolio_content: dict | None = None,
 ) -> None:
-    """Invoke portfolio generator Lambda asynchronously (dedup fast-path)."""
+    """Write PORTFOLIO record and invoke portfolio generator Lambda (dedup fast-path)."""
+    # Write the PORTFOLIO#{upload_id} record so the portfolio-generator can read it.
+    # This mirrors what ai_processing._trigger_portfolio_generation does.
+    if parsed_data is not None and portfolio_content is not None:
+        table = dynamodb.Table(DYNAMODB_TABLE)
+        table.put_item(Item={
+            'PK': f'USER#{user_id}',
+            'SK': f'PORTFOLIO#{upload_id}',
+            'userId': user_id,
+            'uploadId': upload_id,
+            'category': category,
+            'templateId': template_id,
+            'parsedData': parsed_data,
+            'portfolioContent': portfolio_content,
+            'version': 0,
+            'isLive': False,
+            'createdAt': datetime.now(timezone.utc).isoformat(),
+            'status': 'GENERATING',
+        })
+        _update_status(user_id, upload_id, 'GENERATING')
+
     if not PORTFOLIO_LAMBDA_NAME:
         return
     try:
