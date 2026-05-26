@@ -214,7 +214,7 @@ resource "aws_iam_role_policy" "resume_ingestion_dynamodb" {
     Statement = [{
       Sid      = "UpdateUploadStatus"
       Effect   = "Allow"
-      Action   = ["dynamodb:UpdateItem", "dynamodb:GetItem"]
+      Action   = ["dynamodb:UpdateItem", "dynamodb:GetItem", "dynamodb:PutItem"]
       Resource = var.dynamodb_table_arn
     }]
   })
