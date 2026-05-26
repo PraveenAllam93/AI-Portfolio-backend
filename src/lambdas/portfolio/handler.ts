@@ -106,7 +106,32 @@ export async function lambdaHandler(event: LambdaEvent, context: LambdaContext):
 		);
 
 		if (!getResult.Item) {
-			log('ERROR', 'Portfolio data not found', { correlationId, userId });
+			log('ERROR', 'Portfolio data not found', { correlationId, userId, uploadId });
+			// Update UPLOAD record to FAILED so the frontend stops polling immediately
+			// instead of waiting for the 5-minute stale detection threshold.
+			if (uploadId) {
+				try {
+					await dynamodb.send(
+						new UpdateItemCommand({
+							TableName: DYNAMODB_TABLE,
+							Key: marshall({ PK: `USER#${userId}`, SK: `UPLOAD#${uploadId}` }),
+							UpdateExpression: 'SET #status = :status, #updatedAt = :updatedAt',
+							ExpressionAttributeNames: { '#status': 'status', '#updatedAt': 'updatedAt' },
+							ExpressionAttributeValues: marshall({
+								':status': 'FAILED',
+								':updatedAt': new Date().toISOString(),
+							}),
+						})
+					);
+				} catch (dbErr) {
+					log('ERROR', 'Failed to mark upload as FAILED after portfolio not found', {
+						correlationId,
+						userId,
+						uploadId,
+						error: String(dbErr),
+					});
+				}
+			}
 			return { statusCode: 404, body: 'Portfolio data not found' };
 		}
 
