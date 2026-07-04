@@ -12,7 +12,7 @@ Supported categories (must match ALLOWED_CATEGORIES):
     - finance
 """
 
-from typing import List, Optional, Dict
+from typing import List, Literal, Optional, Dict
 from pydantic import BaseModel, Field
 
 ALLOWED_CATEGORIES = {
@@ -20,6 +20,8 @@ ALLOWED_CATEGORIES = {
     'designer',
     'marketing',
     'finance',
+    'civil_engineer',
+    'mechanical_engineer'
 }
 
 
@@ -279,6 +281,10 @@ class Profile(BaseModel):
         description="Professional summary describing experience and expertise")
     social_links: Optional[SocialLinks] = Field(
         description="Professional profile links")
+    profile_image: Optional[str] = Field(
+        default=None,
+        description="URL of the profile/avatar photo"
+    )
 
 
 class SkillGroup(BaseModel):
@@ -364,6 +370,49 @@ class CertificationItem(BaseModel):
 
 
 # =====================================================
+# CUSTOM SECTIONS (all categories)
+# =====================================================
+
+class CustomSectionItem(BaseModel):
+    label: Optional[str] = Field(
+        description="Short title or name for this item"
+    )
+    value: Optional[str] = Field(
+        description="Main content, description, or body text for this item"
+    )
+    subtitle: Optional[str] = Field(
+        description="Secondary info such as date range, organization, or role"
+    )
+    tags: Optional[List[str]] = Field(
+        default_factory=list,
+        description="Optional tags, chips, or categories for this item"
+    )
+    url: Optional[str] = Field(
+        description="Optional URL to link from this item"
+    )
+
+
+class CustomSection(BaseModel):
+    section_id: str = Field(
+        description="Unique snake_case identifier for this section (e.g. 'volunteer_work', 'speaking_engagements')"
+    )
+    title: str = Field(
+        description="Human-readable section heading displayed on the portfolio"
+    )
+    display_type: Literal["cards", "list", "timeline"] = Field(
+        description=(
+            "Rendering layout. 'cards' = grid of cards (best for projects/talks), "
+            "'list' = bullet list (best for skills/items), "
+            "'timeline' = chronological entries (best for history/events)"
+        )
+    )
+    items: List[CustomSectionItem] = Field(
+        default_factory=list,
+        description="Ordered list of items in this section"
+    )
+
+
+# =====================================================
 # SOFTWARE ENGINEER
 # =====================================================
 
@@ -387,6 +436,10 @@ class SoftwareEngineerModel(BaseModel):
     achievements: Optional[List[AchievementItem]]
     education: Optional[List[EducationItem]]
     certifications: Optional[List[CertificationItem]]
+    custom_sections: Optional[List[CustomSection]] = Field(
+        default_factory=list,
+        description="Additional portfolio sections added by the user that don't fit standard categories"
+    )
 
 
 # =====================================================
@@ -426,6 +479,10 @@ class DesignerModel(BaseModel):
     achievements: Optional[List[AchievementItem]]
     education: Optional[List[EducationItem]]
     certifications: Optional[List[CertificationItem]]
+    custom_sections: Optional[List[CustomSection]] = Field(
+        default_factory=list,
+        description="Additional portfolio sections added by the user that don't fit standard categories"
+    )
 
 
 # =====================================================
@@ -459,6 +516,10 @@ class MarketingModel(BaseModel):
     achievements: Optional[List[AchievementItem]]
     education: Optional[List[EducationItem]]
     certifications: Optional[List[CertificationItem]]
+    custom_sections: Optional[List[CustomSection]] = Field(
+        default_factory=list,
+        description="Additional portfolio sections added by the user that don't fit standard categories"
+    )
 
 
 # =====================================================
@@ -504,6 +565,182 @@ class FinanceModel(BaseModel):
     achievements: Optional[List[AchievementItem]]
     education: Optional[List[EducationItem]]
     certifications: Optional[List[CertificationItem]]
+    custom_sections: Optional[List[CustomSection]] = Field(
+        default_factory=list,
+        description="Additional portfolio sections added by the user that don't fit standard categories"
+    )
+
+# =====================================================
+# CIVIL ENGINEER
+# =====================================================
+
+
+class CivilProject(BaseProject):
+    project_type: Optional[str] = Field(
+        description="Type of project such as Residential Building, Commercial Complex, Highway, Bridge, Dam, Industrial Facility"
+    )
+    project_value: Optional[str] = Field(
+        description="Total project cost or budget"
+    )
+    project_area: Optional[str] = Field(
+        description="Project size such as built-up area, road length, etc."
+    )
+    client_name: Optional[str] = Field(
+        description="Client or project owner"
+    )
+    contractor_name: Optional[str] = Field(
+        description="Main contractor involved"
+    )
+    software_used: Optional[List[str]] = Field(
+        description="Civil engineering software used such as AutoCAD, STAAD Pro, ETABS, Revit, Civil 3D, Primavera"
+    )
+    standards_followed: Optional[List[str]] = Field(
+        description="Engineering standards followed such as IS Codes, ACI, ASTM, Eurocodes"
+    )
+    responsibilities: Optional[List[str]] = Field(
+        description="Major responsibilities handled during the project"
+    )
+
+
+class CivilExperience(BaseExperience):
+    project_types_handled: Optional[List[str]] = Field(
+        description="Types of projects handled"
+    )
+    site_management: Optional[bool] = Field(
+        description="Whether site supervision was part of responsibilities"
+    )
+    team_size_managed: Optional[int] = Field(
+        description="Number of engineers/workers managed"
+    )
+    contract_management: Optional[bool] = Field(
+        description="Whether contracts and vendor coordination were managed"
+    )
+    quality_control_responsibilities: Optional[List[str]] = Field(
+        description="Quality assurance and quality control activities performed"
+    )
+
+
+class CivilCertification(BaseModel):
+    name: Optional[str]
+    issuer: Optional[str]
+    year: Optional[int]
+    certification_url: Optional[str]
+
+
+class CivilEngineerModel(BaseModel):
+    profile: Profile
+
+    professional_summary: Optional[str] = Field(
+        description="Civil engineering profile summary"
+    )
+
+    skills: Optional[List[SkillGroup]]
+
+    software_proficiency: Optional[List[str]] = Field(
+        description="Civil engineering software proficiency"
+    )
+
+    experience: Optional[List[CivilExperience]]
+
+    projects: Optional[List[CivilProject]]
+
+    achievements: Optional[List[AchievementItem]]
+
+    education: Optional[List[EducationItem]]
+
+    certifications: Optional[List[CivilCertification]]
+
+    custom_sections: Optional[List[CustomSection]] = Field(
+        default_factory=list
+    )
+
+# =====================================================
+# MECHANICAL ENGINEER
+# =====================================================
+
+
+class MechanicalProject(BaseProject):
+    project_type: Optional[str] = Field(
+        description="Type of project such as Product Design, Manufacturing, HVAC, Robotics, Automotive, Industrial Equipment"
+    )
+    software_used: Optional[List[str]] = Field(
+        description="Engineering tools such as SolidWorks, CATIA, Creo, AutoCAD, ANSYS, MATLAB"
+    )
+    materials_used: Optional[List[str]] = Field(
+        description="Materials used in the project"
+    )
+    manufacturing_processes: Optional[List[str]] = Field(
+        description="Processes such as CNC, Casting, Welding, Injection Molding, Additive Manufacturing"
+    )
+    standards_followed: Optional[List[str]] = Field(
+        description="Engineering standards such as ASME, ISO, ASTM"
+    )
+    testing_methods: Optional[List[str]] = Field(
+        description="Testing and validation methods used"
+    )
+
+
+class MechanicalExperience(BaseExperience):
+    machinery_handled: Optional[List[str]] = Field(
+        description="Machines or equipment operated, maintained, or designed"
+    )
+    manufacturing_processes_managed: Optional[List[str]] = Field(
+        description="Manufacturing processes managed"
+    )
+    production_targets: Optional[List[str]] = Field(
+        description="Production KPIs or targets achieved"
+    )
+    maintenance_responsibilities: Optional[List[str]] = Field(
+        description="Preventive or corrective maintenance responsibilities"
+    )
+    team_size_managed: Optional[int] = Field(
+        description="Number of technicians/operators managed"
+    )
+
+
+class PatentItem(BaseModel):
+    title: Optional[str] = Field(
+        description="Patent title"
+    )
+    patent_number: Optional[str] = Field(
+        description="Patent registration number"
+    )
+    year: Optional[int] = Field(
+        description="Year granted"
+    )
+    patent_url: Optional[str] = Field(
+        description="Patent reference URL"
+    )
+
+
+class MechanicalEngineerModel(BaseModel):
+    profile: Profile
+
+    professional_summary: Optional[str] = Field(
+        description="Mechanical engineering profile summary"
+    )
+
+    skills: Optional[List[SkillGroup]]
+
+    software_proficiency: Optional[List[str]] = Field(
+        description="CAD, CAE, CAM and simulation tools"
+    )
+
+    experience: Optional[List[MechanicalExperience]]
+
+    projects: Optional[List[MechanicalProject]]
+
+    patents: Optional[List[PatentItem]]
+
+    achievements: Optional[List[AchievementItem]]
+
+    education: Optional[List[EducationItem]]
+
+    certifications: Optional[List[CertificationItem]]
+
+    custom_sections: Optional[List[CustomSection]] = Field(
+        default_factory=list
+    )
 
 # ---------------------------------------------------------------------------
 # Registry — maps category string → (model class, prompt instruction)
@@ -545,6 +782,27 @@ _CATEGORY_REGISTRY: Dict[str, dict] = {
             "You are parsing a finance professional's resume. "
             "Pay special attention to deal sizes, AUM, financial tools, "
             "certifications (CFA, CPA, FRM), and quantified financial metrics."
+        ),
+    },
+    'civil_engineer': {
+        'model': CivilEngineerModel,
+        'schema_json': CivilEngineerModel.model_json_schema(),
+        'instruction': (
+            "You are parsing a civil engineer's resume. "
+            "Pay special attention to construction projects, structural design, "
+            "site management, project budgets, engineering software, quality control, "
+            "and applicable engineering standards."
+        ),
+    },
+
+    'mechanical_engineer': {
+        'model': MechanicalEngineerModel,
+        'schema_json': MechanicalEngineerModel.model_json_schema(),
+        'instruction': (
+            "You are parsing a mechanical engineer's resume. "
+            "Pay special attention to product design, manufacturing processes, "
+            "CAD/CAE software, machinery, maintenance, engineering calculations, "
+            "materials, testing, and industrial standards."
         ),
     },
 }

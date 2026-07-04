@@ -33,3 +33,8 @@ variable "tags" {
   type        = map(string)
   default     = {}
 }
+
+variable "portfolio_access_gate_lambda_arn" {
+  description = "Versioned ARN of the Lambda@Edge portfolio access gate function"
+  type        = string
+}

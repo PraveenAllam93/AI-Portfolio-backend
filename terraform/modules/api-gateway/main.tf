@@ -159,6 +159,43 @@ resource "aws_lambda_permission" "api_cancel_upload" {
   source_arn    = "${aws_api_gateway_rest_api.main.execution_arn}/*/*"
 }
 
+# /status/{uploadId}/start-generation
+resource "aws_api_gateway_resource" "start_generation" {
+  rest_api_id = aws_api_gateway_rest_api.main.id
+  parent_id   = aws_api_gateway_resource.status_id.id
+  path_part   = "start-generation"
+}
+
+# POST /status/{uploadId}/start-generation — resume pipeline after selection
+resource "aws_api_gateway_method" "post_start_generation" {
+  rest_api_id   = aws_api_gateway_rest_api.main.id
+  resource_id   = aws_api_gateway_resource.start_generation.id
+  http_method   = "POST"
+  authorization = "COGNITO_USER_POOLS"
+  authorizer_id = aws_api_gateway_authorizer.cognito.id
+
+  request_parameters = {
+    "method.request.path.uploadId" = true
+  }
+}
+
+resource "aws_api_gateway_integration" "post_start_generation" {
+  rest_api_id             = aws_api_gateway_rest_api.main.id
+  resource_id             = aws_api_gateway_resource.start_generation.id
+  http_method             = aws_api_gateway_method.post_start_generation.http_method
+  integration_http_method = "POST"
+  type                    = "AWS_PROXY"
+  uri                     = var.start_generation_lambda_invoke_arn
+}
+
+resource "aws_lambda_permission" "api_start_generation" {
+  statement_id  = "AllowAPIGatewayInvokeStartGeneration"
+  action        = "lambda:InvokeFunction"
+  function_name = var.start_generation_lambda_arn
+  principal     = "apigateway.amazonaws.com"
+  source_arn    = "${aws_api_gateway_rest_api.main.execution_arn}/*/*"
+}
+
 # -----------------------------------------------------------------------------
 # /portfolio RESOURCE
 # -----------------------------------------------------------------------------
@@ -1160,6 +1197,86 @@ resource "aws_api_gateway_integration_response" "options_portfolio_toggle_live" 
 }
 
 # =============================================================================
+# /portfolio/{userId}/{uploadId}/preview — GET (owner-only presigned S3 URL)
+# =============================================================================
+
+resource "aws_api_gateway_resource" "portfolio_preview" {
+  rest_api_id = aws_api_gateway_rest_api.main.id
+  parent_id   = aws_api_gateway_resource.portfolio_upload_id.id
+  path_part   = "preview"
+}
+
+resource "aws_api_gateway_method" "get_portfolio_preview_url" {
+  rest_api_id   = aws_api_gateway_rest_api.main.id
+  resource_id   = aws_api_gateway_resource.portfolio_preview.id
+  http_method   = "GET"
+  authorization = "COGNITO_USER_POOLS"
+  authorizer_id = aws_api_gateway_authorizer.cognito.id
+
+  request_parameters = {
+    "method.request.path.userId"          = true
+    "method.request.path.uploadId"        = true
+    "method.request.querystring.versionId" = true
+  }
+}
+
+resource "aws_api_gateway_integration" "get_portfolio_preview_url" {
+  rest_api_id             = aws_api_gateway_rest_api.main.id
+  resource_id             = aws_api_gateway_resource.portfolio_preview.id
+  http_method             = aws_api_gateway_method.get_portfolio_preview_url.http_method
+  integration_http_method = "POST"
+  type                    = "AWS_PROXY"
+  uri                     = var.get_portfolio_preview_url_lambda_invoke_arn
+}
+
+resource "aws_lambda_permission" "api_get_portfolio_preview_url" {
+  statement_id  = "AllowAPIGatewayInvoke"
+  action        = "lambda:InvokeFunction"
+  function_name = var.get_portfolio_preview_url_lambda_arn
+  principal     = "apigateway.amazonaws.com"
+  source_arn    = "${aws_api_gateway_rest_api.main.execution_arn}/*/*"
+}
+
+resource "aws_api_gateway_method" "options_portfolio_preview" {
+  rest_api_id   = aws_api_gateway_rest_api.main.id
+  resource_id   = aws_api_gateway_resource.portfolio_preview.id
+  http_method   = "OPTIONS"
+  authorization = "NONE"
+}
+
+resource "aws_api_gateway_integration" "options_portfolio_preview" {
+  rest_api_id = aws_api_gateway_rest_api.main.id
+  resource_id = aws_api_gateway_resource.portfolio_preview.id
+  http_method = aws_api_gateway_method.options_portfolio_preview.http_method
+  type        = "MOCK"
+  request_templates = { "application/json" = "{\"statusCode\": 200}" }
+}
+
+resource "aws_api_gateway_method_response" "options_portfolio_preview" {
+  rest_api_id = aws_api_gateway_rest_api.main.id
+  resource_id = aws_api_gateway_resource.portfolio_preview.id
+  http_method = aws_api_gateway_method.options_portfolio_preview.http_method
+  status_code = "200"
+  response_parameters = {
+    "method.response.header.Access-Control-Allow-Headers" = true
+    "method.response.header.Access-Control-Allow-Methods" = true
+    "method.response.header.Access-Control-Allow-Origin"  = true
+  }
+}
+
+resource "aws_api_gateway_integration_response" "options_portfolio_preview" {
+  rest_api_id = aws_api_gateway_rest_api.main.id
+  resource_id = aws_api_gateway_resource.portfolio_preview.id
+  http_method = aws_api_gateway_method.options_portfolio_preview.http_method
+  status_code = aws_api_gateway_method_response.options_portfolio_preview.status_code
+  response_parameters = {
+    "method.response.header.Access-Control-Allow-Headers" = "'Content-Type,Authorization'"
+    "method.response.header.Access-Control-Allow-Methods" = "'GET,OPTIONS'"
+    "method.response.header.Access-Control-Allow-Origin"  = "'*'"
+  }
+}
+
+# =============================================================================
 # INTERVIEW AGENT ROUTES
 # POST /interview/start
 # POST /interview/answer
@@ -1644,6 +1761,12 @@ resource "aws_api_gateway_deployment" "main" {
       aws_api_gateway_resource.portfolio_custom_section.id,
       aws_api_gateway_method.add_custom_section.id,
       aws_api_gateway_integration.add_custom_section.id,
+      aws_api_gateway_resource.portfolio_preview.id,
+      aws_api_gateway_method.get_portfolio_preview_url.id,
+      aws_api_gateway_integration.get_portfolio_preview_url.id,
+      aws_api_gateway_resource.start_generation.id,
+      aws_api_gateway_method.post_start_generation.id,
+      aws_api_gateway_integration.post_start_generation.id,
     ]))
   }
 

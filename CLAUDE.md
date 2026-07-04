@@ -286,6 +286,26 @@ ALWAYS
 Ai	
 ⸻
 
+DEPLOYMENT RULES
+
+AFTER EVERY BACKEND CODE CHANGE, YOU MUST RUN TERRAFORM APPLY.
+
+Lambda code changes (any .py file under src/lambdas/) are NOT live until Terraform repackages and deploys them.
+Do NOT just edit the Python file and report it done — always follow with:
+
+	cd /home/prudvi/projects/AI-Portfolio-backend/terraform && terraform apply -auto-approve -lock=false
+
+This applies to ALL Lambda changes:
+	•	src/lambdas/auth/*.py
+	•	src/lambdas/ingestion/handler.py
+	•	src/lambdas/upload/handler.py
+	•	src/lambdas/ai_processing/handler.py
+	•	Any new Lambda added
+
+Terraform uses source_code_hash to detect changes automatically — it will only redeploy what changed.
+
+⸻
+
 EXPECTED BEHAVIOR FROM CLAUDE
 
 When asked to:
@@ -293,6 +313,7 @@ When asked to:
 	•	Add features → explain dependencies and impact
 	•	Modify structure → propose an architecture update
 	•	Handle uncertainty → STOP and ask
+	•	Change any Lambda (.py) file → run terraform apply immediately after
 
 Claude must behave as a senior production engineer, not a code generator.
 

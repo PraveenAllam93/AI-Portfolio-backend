@@ -210,6 +210,8 @@ module "api_gateway" {
   get_portfolio_lambda_invoke_arn      = module.lambda.get_portfolio_invoke_arn
   get_status_lambda_arn                = module.lambda.get_status_arn
   get_status_lambda_invoke_arn         = module.lambda.get_status_invoke_arn
+  start_generation_lambda_arn          = module.lambda.start_generation_arn
+  start_generation_lambda_invoke_arn   = module.lambda.start_generation_invoke_arn
 
   # Lambda integrations — new endpoints
   get_analytics_lambda_arn                   = module.lambda.get_analytics_arn
@@ -257,7 +259,91 @@ module "api_gateway" {
   delete_portfolio_lambda_arn             = module.lambda.delete_portfolio_arn
   delete_portfolio_lambda_invoke_arn      = module.lambda.delete_portfolio_invoke_arn
 
+  get_portfolio_preview_url_lambda_arn        = module.lambda.get_portfolio_preview_url_arn
+  get_portfolio_preview_url_lambda_invoke_arn = module.lambda.get_portfolio_preview_url_invoke_arn
+
   tags = local.common_tags
+}
+
+# -----------------------------------------------------------------------------
+# PORTFOLIO ACCESS GATE (Lambda@Edge) — MUST be in us-east-1
+# -----------------------------------------------------------------------------
+# Lambda@Edge requires the function to be created in us-east-1 regardless of
+# the primary deployment region. It also does NOT support environment variables,
+# so the DynamoDB table name and region are baked in via templatefile().
+
+data "archive_file" "portfolio_access_gate" {
+  type = "zip"
+  source {
+    content = templatefile("${path.root}/../src/lambdas/portfolio_access_gate/handler.py", {
+      dynamodb_table  = module.dynamodb.table_name
+      dynamodb_region = var.aws_region
+    })
+    filename = "handler.py"
+  }
+  output_path = "${path.root}/../dist/lambdas/portfolio_access_gate.zip"
+}
+
+resource "aws_iam_role" "portfolio_access_gate" {
+  provider = aws.us_east_1
+  name     = "${local.name_prefix}-portfolio-access-gate-role"
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect    = "Allow"
+      Action    = "sts:AssumeRole"
+      Principal = { Service = ["lambda.amazonaws.com", "edgelambda.amazonaws.com"] }
+    }]
+  })
+  tags = local.common_tags
+}
+
+resource "aws_iam_role_policy" "portfolio_access_gate_logs" {
+  provider = aws.us_east_1
+  name     = "cloudwatch-logs"
+  role     = aws_iam_role.portfolio_access_gate.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect   = "Allow"
+      Action   = ["logs:CreateLogGroup", "logs:CreateLogStream", "logs:PutLogEvents"]
+      Resource = "arn:aws:logs:*:*:*"
+    }]
+  })
+}
+
+resource "aws_iam_role_policy" "portfolio_access_gate_dynamodb" {
+  provider = aws.us_east_1
+  name     = "dynamodb-get-portfolio-live"
+  role     = aws_iam_role.portfolio_access_gate.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Sid      = "CheckPortfolioAccess"
+      Effect   = "Allow"
+      Action   = ["dynamodb:GetItem"]
+      Resource = module.dynamodb.table_arn
+    }]
+  })
+}
+
+resource "aws_lambda_function" "portfolio_access_gate" {
+  provider         = aws.us_east_1
+  filename         = data.archive_file.portfolio_access_gate.output_path
+  function_name    = "${local.name_prefix}-portfolio-access-gate"
+  role             = aws_iam_role.portfolio_access_gate.arn
+  handler          = "handler.lambda_handler"
+  source_code_hash = data.archive_file.portfolio_access_gate.output_base64sha256
+  runtime          = "python3.12"
+  timeout          = 30
+  memory_size      = 128
+  publish          = true # versioned ARN required by CloudFront Lambda@Edge
+
+  # No environment block — Lambda@Edge does not support environment variables.
+
+  tags = merge(local.common_tags, {
+    Function = "CloudFront Origin Request access gate for portfolio visibility"
+  })
 }
 
 # -----------------------------------------------------------------------------
@@ -279,8 +365,9 @@ module "cloudfront" {
   portfolio_bucket_domain   = module.s3.portfolio_bucket_domain
   # Access logs bucket — CloudFront writes compressed logs here every ~5 min.
   # Must use bucket_domain_name (not regional) per CloudFront logging requirement.
-  access_logs_bucket_domain = module.s3.access_logs_bucket_domain
-  tags                      = local.common_tags
+  access_logs_bucket_domain        = module.s3.access_logs_bucket_domain
+  portfolio_access_gate_lambda_arn = aws_lambda_function.portfolio_access_gate.qualified_arn
+  tags                             = local.common_tags
 }
 
 # -----------------------------------------------------------------------------

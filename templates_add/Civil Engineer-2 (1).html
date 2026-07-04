@@ -1,0 +1,1222 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Marcus R. Holloway — Civil Engineer</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@300;400;500;600;700;800&family=Lora:ital,wght@0,400;0,500;0,600;1,400&family=Barlow:wght@300;400;500;600&display=swap" rel="stylesheet" />
+<style>
+  /* ─── TOKENS ─────────────────────────────────────────── */
+  :root {
+    --navy:       #0d1f3c;
+    --navy-mid:   #163563;
+    --steel:      #2a5298;
+    --steel-lt:   #4475c2;
+    --sky:        #6496d2;
+    --mist:       #c8d8ee;
+    --chalk:      #eef3f9;
+    --warm-gray:  #8a9ab0;
+    --mid-gray:   #4a5568;
+    --off-white:  #f7f9fc;
+    --white:      #ffffff;
+    --accent:     #c9973a;   /* brass / engineering gold */
+    --rule:       rgba(42,82,152,.15);
+    --shadow-sm:  0 2px 8px rgba(13,31,60,.08);
+    --shadow-md:  0 6px 28px rgba(13,31,60,.12);
+    --shadow-lg:  0 16px 56px rgba(13,31,60,.18);
+    --r:          4px;
+    --r-lg:       10px;
+    --ff-head:    'Barlow Condensed', sans-serif;
+    --ff-body:    'Barlow', sans-serif;
+    --ff-serif:   'Lora', serif;
+    --transition: .3s cubic-bezier(.4,0,.2,1);
+  }
+
+  /* ─── RESET ──────────────────────────────────────────── */
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scroll-behavior: smooth; font-size: 16px; }
+  body {
+    font-family: var(--ff-body);
+    background: var(--off-white);
+    color: var(--navy);
+    line-height: 1.65;
+    overflow-x: hidden;
+  }
+  img { display: block; max-width: 100%; }
+  a { color: inherit; text-decoration: none; }
+
+  /* ─── BLUEPRINT GRID OVERLAY ─────────────────────────── */
+  body::before {
+    content: '';
+    position: fixed; inset: 0;
+    background-image:
+      linear-gradient(var(--rule) 1px, transparent 1px),
+      linear-gradient(90deg, var(--rule) 1px, transparent 1px);
+    background-size: 48px 48px;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  /* ─── LAYOUT UTILITIES ───────────────────────────────── */
+  .container { max-width: 1120px; margin: 0 auto; padding: 0 2rem; position: relative; z-index: 1; }
+  .section { padding: 96px 0; }
+  .section--alt { background: var(--chalk); }
+
+  /* ─── SECTION LABEL ──────────────────────────────────── */
+  .section-label {
+    display: flex; align-items: center; gap: .75rem;
+    font-family: var(--ff-head);
+    font-size: .8rem; font-weight: 600;
+    letter-spacing: .18em; text-transform: uppercase;
+    color: var(--steel);
+    margin-bottom: 1rem;
+  }
+  .section-label::before {
+    content: '';
+    width: 32px; height: 2px;
+    background: var(--accent);
+    flex-shrink: 0;
+  }
+
+  .section-title {
+    font-family: var(--ff-head);
+    font-size: clamp(2rem, 4vw, 2.75rem);
+    font-weight: 700;
+    line-height: 1.1;
+    color: var(--navy);
+    margin-bottom: 3rem;
+  }
+
+  /* ─── NAV ────────────────────────────────────────────── */
+  .nav {
+    position: sticky; top: 0; z-index: 100;
+    background: rgba(13,31,60,.96);
+    backdrop-filter: blur(12px);
+    border-bottom: 1px solid rgba(255,255,255,.08);
+  }
+  .nav-inner {
+    display: flex; align-items: center; justify-content: space-between;
+    height: 60px;
+  }
+  .nav-logo {
+    font-family: var(--ff-head);
+    font-size: 1.15rem; font-weight: 700;
+    letter-spacing: .06em;
+    color: var(--white);
+  }
+  .nav-logo span { color: var(--accent); }
+  .nav-links {
+    display: flex; gap: 2rem;
+    list-style: none;
+  }
+  .nav-links a {
+    font-family: var(--ff-head);
+    font-size: .85rem; font-weight: 500;
+    letter-spacing: .08em; text-transform: uppercase;
+    color: var(--mist);
+    transition: color var(--transition);
+  }
+  .nav-links a:hover { color: var(--white); }
+
+  /* ─── HERO ───────────────────────────────────────────── */
+  .hero {
+    position: relative;
+    background: linear-gradient(135deg, var(--navy) 0%, var(--navy-mid) 55%, var(--steel) 100%);
+    padding: 120px 0 100px;
+    overflow: hidden;
+  }
+  /* decorative lines */
+  .hero::after {
+    content: '';
+    position: absolute; inset: 0;
+    background-image:
+      repeating-linear-gradient(
+        -45deg,
+        transparent, transparent 48px,
+        rgba(255,255,255,.025) 48px, rgba(255,255,255,.025) 49px
+      );
+    pointer-events: none;
+  }
+  .hero-grid {
+    display: grid; grid-template-columns: 1fr 340px; gap: 4rem;
+    align-items: center;
+  }
+  .hero-eyebrow {
+    display: inline-flex; align-items: center; gap: .6rem;
+    font-family: var(--ff-head);
+    font-size: .8rem; font-weight: 600; letter-spacing: .2em; text-transform: uppercase;
+    color: var(--accent);
+    background: rgba(201,151,58,.12);
+    border: 1px solid rgba(201,151,58,.3);
+    padding: .35rem .9rem; border-radius: 2px;
+    margin-bottom: 1.5rem;
+  }
+  .hero-name {
+    font-family: var(--ff-head);
+    font-size: clamp(3rem, 7vw, 5.5rem);
+    font-weight: 800;
+    line-height: .95;
+    color: var(--white);
+    letter-spacing: -.01em;
+    margin-bottom: 1rem;
+  }
+  .hero-name em {
+    display: block;
+    font-style: normal;
+    color: var(--sky);
+    font-weight: 300;
+  }
+  .hero-designation {
+    font-family: var(--ff-head);
+    font-size: clamp(1.1rem, 2.5vw, 1.45rem);
+    font-weight: 500;
+    color: var(--mist);
+    letter-spacing: .04em;
+    margin-bottom: 2rem;
+  }
+  .hero-designation span {
+    color: var(--accent);
+    font-weight: 600;
+  }
+  .hero-stats {
+    display: flex; gap: 2.5rem;
+    margin-top: 2.5rem;
+  }
+  .stat-item { display: flex; flex-direction: column; }
+  .stat-num {
+    font-family: var(--ff-head);
+    font-size: 2.5rem; font-weight: 800;
+    color: var(--white); line-height: 1;
+  }
+  .stat-label {
+    font-size: .75rem; font-weight: 500;
+    letter-spacing: .1em; text-transform: uppercase;
+    color: var(--warm-gray);
+    margin-top: .3rem;
+  }
+  /* id card panel */
+  .hero-card {
+    background: rgba(255,255,255,.07);
+    border: 1px solid rgba(255,255,255,.12);
+    border-radius: var(--r-lg);
+    padding: 2rem;
+    display: flex; flex-direction: column; gap: 1.25rem;
+  }
+  .hero-avatar {
+    width: 96px; height: 96px; border-radius: 50%;
+    background: linear-gradient(135deg, var(--steel-lt), var(--navy-mid));
+    border: 3px solid rgba(255,255,255,.18);
+    display: grid; place-items: center;
+    font-family: var(--ff-head);
+    font-size: 2rem; font-weight: 700;
+    color: var(--white);
+  }
+  .hero-card-name {
+    font-family: var(--ff-head);
+    font-size: 1.3rem; font-weight: 700;
+    color: var(--white); letter-spacing: .03em;
+  }
+  .hero-card-sub {
+    font-size: .8rem; color: var(--warm-gray);
+    letter-spacing: .08em; text-transform: uppercase;
+    font-weight: 500;
+  }
+  .card-divider {
+    height: 1px;
+    background: rgba(255,255,255,.1);
+  }
+  .card-detail {
+    display: flex; align-items: flex-start; gap: .75rem;
+    font-size: .85rem; color: var(--mist);
+  }
+  .card-detail svg { flex-shrink: 0; margin-top: 2px; color: var(--sky); }
+  .cta-row {
+    display: flex; gap: 1rem; margin-top: 2.5rem; flex-wrap: wrap;
+  }
+  .btn {
+    display: inline-flex; align-items: center; gap: .5rem;
+    font-family: var(--ff-head);
+    font-size: .9rem; font-weight: 600; letter-spacing: .06em; text-transform: uppercase;
+    padding: .8rem 1.8rem;
+    border-radius: var(--r);
+    transition: var(--transition);
+    cursor: pointer;
+  }
+  .btn-primary {
+    background: var(--accent);
+    color: var(--white);
+    border: none;
+  }
+  .btn-primary:hover { background: #b8862f; transform: translateY(-1px); box-shadow: 0 6px 20px rgba(201,151,58,.4); }
+  .btn-outline {
+    background: transparent;
+    color: var(--mist);
+    border: 1px solid rgba(255,255,255,.25);
+  }
+  .btn-outline:hover { border-color: var(--white); color: var(--white); }
+
+  /* ─── SUMMARY ────────────────────────────────────────── */
+  .summary-grid {
+    display: grid; grid-template-columns: 3fr 2fr; gap: 5rem;
+    align-items: start;
+  }
+  .summary-body {
+    font-family: var(--ff-serif);
+    font-size: 1.08rem; color: var(--mid-gray);
+    line-height: 1.9;
+  }
+  .summary-body p + p { margin-top: 1.25rem; }
+  .summary-body strong { color: var(--navy); font-weight: 600; }
+  .expertise-list {
+    list-style: none;
+    display: flex; flex-direction: column; gap: .75rem;
+  }
+  .expertise-item {
+    display: flex; align-items: center; gap: 1rem;
+    background: var(--white);
+    border: 1px solid var(--rule);
+    border-left: 3px solid var(--steel);
+    padding: .85rem 1.1rem;
+    border-radius: 0 var(--r) var(--r) 0;
+    font-family: var(--ff-head);
+    font-size: .95rem; font-weight: 500;
+    color: var(--navy-mid);
+    box-shadow: var(--shadow-sm);
+    transition: var(--transition);
+  }
+  .expertise-item:hover { border-left-color: var(--accent); transform: translateX(4px); }
+  .expertise-item svg { color: var(--steel); flex-shrink: 0; }
+
+  /* ─── PROJECTS ───────────────────────────────────────── */
+  .projects-grid {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+    gap: 1.75rem;
+  }
+  .project-card {
+    background: var(--white);
+    border: 1px solid rgba(42,82,152,.1);
+    border-radius: var(--r-lg);
+    overflow: hidden;
+    box-shadow: var(--shadow-sm);
+    transition: var(--transition);
+    display: flex; flex-direction: column;
+  }
+  .project-card:hover { box-shadow: var(--shadow-lg); transform: translateY(-4px); }
+  .project-banner {
+    height: 6px;
+  }
+  .project-banner.residential { background: linear-gradient(90deg, #4475c2, #6496d2); }
+  .project-banner.commercial  { background: linear-gradient(90deg, #c9973a, #e8b860); }
+  .project-banner.infra       { background: linear-gradient(90deg, #2d7d4e, #4caf7d); }
+  .project-body { padding: 1.75rem; flex: 1; display: flex; flex-direction: column; }
+  .project-badge {
+    display: inline-flex; align-items: center; gap: .4rem;
+    font-family: var(--ff-head);
+    font-size: .72rem; font-weight: 700;
+    letter-spacing: .12em; text-transform: uppercase;
+    padding: .25rem .75rem; border-radius: 2px;
+    margin-bottom: 1rem;
+  }
+  .badge-residential { background: rgba(68,117,194,.1); color: var(--steel); }
+  .badge-commercial  { background: rgba(201,151,58,.12); color: #9e7120; }
+  .badge-infra       { background: rgba(45,125,78,.1); color: #2d7d4e; }
+  .project-title {
+    font-family: var(--ff-head);
+    font-size: 1.25rem; font-weight: 700;
+    color: var(--navy);
+    margin-bottom: .5rem; line-height: 1.2;
+  }
+  .project-location {
+    font-size: .8rem; color: var(--warm-gray);
+    font-weight: 500; margin-bottom: 1.25rem;
+    display: flex; align-items: center; gap: .4rem;
+  }
+  .project-section-head {
+    font-family: var(--ff-head);
+    font-size: .7rem; font-weight: 700;
+    letter-spacing: .14em; text-transform: uppercase;
+    color: var(--warm-gray);
+    margin-bottom: .5rem; margin-top: 1rem;
+  }
+  .project-list {
+    list-style: none; display: flex; flex-direction: column; gap: .4rem;
+  }
+  .project-list li {
+    display: flex; gap: .6rem; align-items: flex-start;
+    font-size: .875rem; color: var(--mid-gray); line-height: 1.5;
+  }
+  .project-list li::before {
+    content: '›';
+    color: var(--steel); font-weight: 700; flex-shrink: 0; margin-top: -1px;
+    font-size: 1rem;
+  }
+  .project-outcomes {
+    margin-top: 1.25rem; padding-top: 1.25rem;
+    border-top: 1px dashed rgba(42,82,152,.15);
+    display: flex; flex-wrap: wrap; gap: .5rem;
+  }
+  .outcome-chip {
+    display: flex; align-items: center; gap: .35rem;
+    background: var(--chalk);
+    border: 1px solid var(--mist);
+    padding: .3rem .7rem;
+    border-radius: 2px;
+    font-size: .75rem; font-weight: 600; color: var(--navy-mid);
+    font-family: var(--ff-head); letter-spacing: .04em;
+  }
+  .outcome-chip svg { color: var(--steel); }
+
+  /* ─── SKILLS ─────────────────────────────────────────── */
+  .skills-layout {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 4rem;
+  }
+  .skill-group { display: flex; flex-direction: column; gap: 1.5rem; }
+  .skill-row { display: flex; flex-direction: column; gap: .5rem; }
+  .skill-header {
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  .skill-name {
+    display: flex; align-items: center; gap: .6rem;
+    font-family: var(--ff-head);
+    font-size: 1rem; font-weight: 600; color: var(--navy);
+  }
+  .skill-name svg { color: var(--steel); }
+  .skill-pct {
+    font-family: var(--ff-head);
+    font-size: .85rem; font-weight: 700; color: var(--steel);
+  }
+  .skill-bar {
+    height: 6px; background: var(--mist); border-radius: 99px; overflow: hidden;
+  }
+  .skill-fill {
+    height: 100%;
+    border-radius: 99px;
+    background: linear-gradient(90deg, var(--navy-mid), var(--steel-lt));
+    transform-origin: left;
+    animation: fillBar .9s ease forwards;
+    transform: scaleX(0);
+  }
+  @keyframes fillBar { to { transform: scaleX(1); } }
+
+  /* ─── TOOLS ──────────────────────────────────────────── */
+  .tools-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+    gap: 1.25rem;
+  }
+  .tool-card {
+    background: var(--white);
+    border: 1px solid rgba(42,82,152,.1);
+    border-radius: var(--r-lg);
+    padding: 1.5rem 1rem;
+    text-align: center;
+    display: flex; flex-direction: column; align-items: center; gap: .75rem;
+    box-shadow: var(--shadow-sm);
+    transition: var(--transition);
+  }
+  .tool-card:hover { border-color: var(--steel); box-shadow: var(--shadow-md); transform: translateY(-2px); }
+  .tool-icon {
+    width: 52px; height: 52px;
+    background: linear-gradient(135deg, var(--chalk), var(--mist));
+    border-radius: var(--r);
+    display: grid; place-items: center;
+    color: var(--steel-lt);
+  }
+  .tool-name {
+    font-family: var(--ff-head);
+    font-size: .95rem; font-weight: 700;
+    color: var(--navy);
+  }
+  .tool-category {
+    font-size: .72rem; font-weight: 500;
+    letter-spacing: .1em; text-transform: uppercase;
+    color: var(--warm-gray);
+  }
+
+  /* ─── CERTIFICATIONS ─────────────────────────────────── */
+  .certs-grid {
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 1.5rem;
+  }
+  .cert-card {
+    display: flex; gap: 1.25rem; align-items: flex-start;
+    background: var(--white);
+    border: 1px solid rgba(42,82,152,.1);
+    border-radius: var(--r-lg);
+    padding: 1.5rem;
+    box-shadow: var(--shadow-sm);
+    transition: var(--transition);
+  }
+  .cert-card:hover { border-color: var(--accent); box-shadow: var(--shadow-md); }
+  .cert-seal {
+    width: 48px; height: 48px; flex-shrink: 0;
+    background: linear-gradient(135deg, var(--accent), #e8b860);
+    border-radius: var(--r);
+    display: grid; place-items: center;
+    color: var(--white);
+    font-family: var(--ff-head); font-weight: 800; font-size: .85rem;
+  }
+  .cert-body {}
+  .cert-title {
+    font-family: var(--ff-head);
+    font-size: 1rem; font-weight: 700; color: var(--navy);
+    line-height: 1.3; margin-bottom: .35rem;
+  }
+  .cert-issuer {
+    font-size: .8rem; color: var(--warm-gray);
+    font-weight: 500; margin-bottom: .5rem;
+  }
+  .cert-meta {
+    display: flex; gap: .75rem; flex-wrap: wrap;
+  }
+  .cert-tag {
+    font-family: var(--ff-head);
+    font-size: .7rem; font-weight: 600;
+    letter-spacing: .1em; text-transform: uppercase;
+    background: var(--chalk);
+    border: 1px solid var(--mist);
+    padding: .2rem .6rem; border-radius: 2px;
+    color: var(--navy-mid);
+  }
+  .cert-tag.active {
+    background: rgba(45,125,78,.08);
+    border-color: rgba(45,125,78,.2);
+    color: #2d7d4e;
+  }
+
+  /* ─── CONTACT ────────────────────────────────────────── */
+  .contact-section {
+    background: linear-gradient(135deg, var(--navy) 0%, var(--navy-mid) 60%, #1e4a8c 100%);
+    position: relative; overflow: hidden;
+  }
+  .contact-section::after {
+    content: '';
+    position: absolute; bottom: -60px; right: -60px;
+    width: 300px; height: 300px;
+    border-radius: 50%;
+    background: rgba(100,150,210,.08);
+    pointer-events: none;
+  }
+  .contact-grid {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 5rem; align-items: center;
+  }
+  .contact-text .section-label { color: var(--sky); }
+  .contact-text .section-title { color: var(--white); }
+  .contact-tagline {
+    font-family: var(--ff-serif);
+    font-size: 1.05rem; color: var(--mist);
+    line-height: 1.8; margin-top: -.5rem;
+  }
+  .contact-cards {
+    display: flex; flex-direction: column; gap: 1rem;
+  }
+  .contact-item {
+    display: flex; align-items: center; gap: 1.1rem;
+    background: rgba(255,255,255,.07);
+    border: 1px solid rgba(255,255,255,.1);
+    border-radius: var(--r-lg);
+    padding: 1.1rem 1.4rem;
+    transition: var(--transition);
+  }
+  .contact-item:hover { background: rgba(255,255,255,.12); border-color: rgba(255,255,255,.2); }
+  .contact-icon {
+    width: 42px; height: 42px; flex-shrink: 0;
+    background: rgba(100,150,210,.2);
+    border-radius: var(--r);
+    display: grid; place-items: center;
+    color: var(--sky);
+  }
+  .contact-label {
+    font-family: var(--ff-head);
+    font-size: .7rem; font-weight: 600;
+    letter-spacing: .14em; text-transform: uppercase;
+    color: var(--warm-gray); margin-bottom: .2rem;
+  }
+  .contact-value {
+    font-size: .95rem; font-weight: 500;
+    color: var(--white);
+  }
+
+  /* ─── FOOTER ─────────────────────────────────────────── */
+  .footer {
+    background: #070e1c;
+    padding: 1.75rem 0;
+    text-align: center;
+    font-size: .8rem; color: var(--warm-gray);
+    font-family: var(--ff-head); letter-spacing: .06em;
+  }
+  .footer span { color: var(--accent); }
+
+  /* ─── DIVIDER ────────────────────────────────────────── */
+  .section-divider {
+    width: 100%; height: 1px;
+    background: linear-gradient(90deg, transparent, var(--mist) 20%, var(--mist) 80%, transparent);
+    margin: 0;
+  }
+
+  /* ─── ANIMATIONS ─────────────────────────────────────── */
+  .fade-up {
+    opacity: 0; transform: translateY(24px);
+    transition: opacity .7s ease, transform .7s ease;
+  }
+  .fade-up.visible { opacity: 1; transform: translateY(0); }
+  .delay-1 { transition-delay: .1s; }
+  .delay-2 { transition-delay: .2s; }
+  .delay-3 { transition-delay: .3s; }
+
+  /* ─── RESPONSIVE ─────────────────────────────────────── */
+  @media (max-width: 900px) {
+    .hero-grid, .summary-grid, .skills-layout,
+    .contact-grid { grid-template-columns: 1fr; gap: 2.5rem; }
+    .hero-card { display: none; }
+    .nav-links { display: none; }
+    .section { padding: 64px 0; }
+  }
+  @media (max-width: 600px) {
+    .hero-stats { gap: 1.5rem; }
+    .projects-grid { grid-template-columns: 1fr; }
+    .tools-grid { grid-template-columns: repeat(2, 1fr); }
+    .certs-grid { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ═══════════════════════════════════════════════════════ NAV -->
+<nav class="nav">
+  <div class="container nav-inner">
+    <div class="nav-logo">M<span>.</span>R<span>.</span>H</div>
+    <ul class="nav-links">
+      <li><a href="#summary">About</a></li>
+      <li><a href="#projects">Projects</a></li>
+      <li><a href="#skills">Skills</a></li>
+      <li><a href="#tools">Tools</a></li>
+      <li><a href="#certifications">Certifications</a></li>
+      <li><a href="#contact">Contact</a></li>
+    </ul>
+  </div>
+</nav>
+
+<!-- ═══════════════════════════════════════════════════════ HERO -->
+<header class="hero">
+  <div class="container">
+    <div class="hero-grid">
+      <div>
+        <div class="hero-eyebrow">
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor"><circle cx="6" cy="6" r="5" stroke="currentColor" stroke-width="1.5" fill="none"/><circle cx="6" cy="6" r="2" fill="currentColor"/></svg>
+          Available for Projects
+        </div>
+        <h1 class="hero-name">
+          Marcus R.
+          <em>Holloway</em>
+        </h1>
+        <p class="hero-designation">
+          Senior Civil Engineer &nbsp;·&nbsp; <span>B.E. Civil | M.Tech Structural</span>
+        </p>
+        <p style="color:var(--mist);font-size:.95rem;max-width:520px;line-height:1.8;">
+          Infrastructure specialist with a proven track record across residential, commercial, 
+          and large-scale civil projects — delivering precision-engineered solutions on time and within budget.
+        </p>
+        <div class="hero-stats">
+          <div class="stat-item">
+            <span class="stat-num">14+</span>
+            <span class="stat-label">Years Experience</span>
+          </div>
+          <div class="stat-item">
+            <span class="stat-num">38</span>
+            <span class="stat-label">Projects Delivered</span>
+          </div>
+          <div class="stat-item">
+            <span class="stat-num">₹ 820Cr</span>
+            <span class="stat-label">Project Value</span>
+          </div>
+        </div>
+        <div class="cta-row">
+          <a href="#contact" class="btn btn-primary">
+            <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+            Get In Touch
+          </a>
+          <a href="#projects" class="btn btn-outline">View Projects</a>
+        </div>
+      </div>
+      <!-- ID card -->
+      <div class="hero-card">
+        <div class="hero-avatar">MH</div>
+        <div>
+          <div class="hero-card-name">Marcus R. Holloway</div>
+          <div class="hero-card-sub">Sr. Civil Engineer · PE Licensed</div>
+        </div>
+        <div class="card-divider"></div>
+        <div class="card-detail">
+          <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+          <span>Mumbai, Maharashtra, India</span>
+        </div>
+        <div class="card-detail">
+          <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg>
+          <span>Holloway Infrastructure Group</span>
+        </div>
+        <div class="card-detail">
+          <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+          <span>PE License #: MH-CE-20130876</span>
+        </div>
+        <div class="card-detail">
+          <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.15 12 19.79 19.79 0 0 1 1.08 3.41 2 2 0 0 1 3.05 1h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L7.09 8.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 21 16z"/></svg>
+          <span>+91 98200 43781</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</header>
+
+<!-- ═══════════════════════════════════════════════════════ SUMMARY -->
+<section class="section" id="summary">
+  <div class="container">
+    <div class="summary-grid">
+      <div class="fade-up">
+        <div class="section-label">Professional Summary</div>
+        <h2 class="section-title">Infrastructure Expertise<br>Built on Precision</h2>
+        <div class="summary-body">
+          <p>
+            Marcus R. Holloway is a <strong>Senior Civil Engineer</strong> with 14+ years of hands-on experience spanning 
+            structural design, site execution, and project management across India's most demanding 
+            infrastructure sectors. He specializes in translating complex engineering requirements 
+            into safe, cost-effective, and sustainable built environments.
+          </p>
+          <p>
+            His portfolio includes high-rise residential towers, commercial complexes, 
+            highway flyovers, and municipal drainage systems — each delivered with rigorous 
+            <strong>QA/QC protocols</strong> and full IS/IRC code compliance. Marcus has led 
+            multidisciplinary teams of up to 60 personnel, managed subcontractors, and maintained 
+            direct coordination with clients and regulatory authorities.
+          </p>
+          <p>
+            Known for his meticulous estimation skills and command of structural analysis software, 
+            he brings both technical depth and project leadership to every engagement — consistently 
+            achieving <strong>zero-defect handovers</strong> and timely project completions.
+          </p>
+        </div>
+      </div>
+      <div class="fade-up delay-2">
+        <div class="section-label" style="margin-top:4.5rem;">Core Expertise</div>
+        <ul class="expertise-list">
+          <li class="expertise-item">
+            <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 9h6M9 12h6M9 15h4"/></svg>
+            Structural Analysis & Design
+          </li>
+          <li class="expertise-item">
+            <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+            Infrastructure Planning
+          </li>
+          <li class="expertise-item">
+            <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+            Site & Team Management
+          </li>
+          <li class="expertise-item">
+            <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+            Quality Assurance / QA&QC
+          </li>
+          <li class="expertise-item">
+            <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+            Cost Estimation & BOQ
+          </li>
+          <li class="expertise-item">
+            <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M14.5 10c-.83 0-1.5-.67-1.5-1.5v-5c0-.83.67-1.5 1.5-1.5s1.5.67 1.5 1.5v5c0 .83-.67 1.5-1.5 1.5z"/><path d="M20.5 10H19V8.5c0-.83.67-1.5 1.5-1.5s1.5.67 1.5 1.5-.67 1.5-1.5 1.5z"/><path d="M9.5 14c.83 0 1.5.67 1.5 1.5v5c0 .83-.67 1.5-1.5 1.5S8 21.33 8 20.5v-5c0-.83.67-1.5 1.5-1.5z"/><path d="M3.5 14H5v1.5c0 .83-.67 1.5-1.5 1.5S2 16.33 2 15.5 2.67 14 3.5 14z"/><path d="M14 14.5c0-.83.67-1.5 1.5-1.5h5c.83 0 1.5.67 1.5 1.5s-.67 1.5-1.5 1.5h-5c-.83 0-1.5-.67-1.5-1.5z"/><path d="M15.5 19H14v1.5c0 .83.67 1.5 1.5 1.5s1.5-.67 1.5-1.5-.67-1.5-1.5-1.5z"/><path d="M10 9.5C10 8.67 9.33 8 8.5 8h-5C2.67 8 2 8.67 2 9.5S2.67 11 3.5 11h5c.83 0 1.5-.67 1.5-1.5z"/><path d="M8.5 5H10V3.5C10 2.67 9.33 2 8.5 2S7 2.67 7 3.5 7.67 5 8.5 5z"/></svg>
+            IS / IRC Code Compliance
+          </li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<div class="section-divider"></div>
+
+<!-- ═══════════════════════════════════════════════════════ PROJECTS -->
+<section class="section section--alt" id="projects">
+  <div class="container">
+    <div class="section-label fade-up">Selected Projects</div>
+    <h2 class="section-title fade-up delay-1">Delivered Works</h2>
+    <div class="projects-grid">
+
+      <!-- Project 1 -->
+      <article class="project-card fade-up">
+        <div class="project-banner residential"></div>
+        <div class="project-body">
+          <span class="project-badge badge-residential">
+            <svg width="10" height="10" fill="currentColor" viewBox="0 0 24 24"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
+            Residential
+          </span>
+          <div class="project-title">Skyline Heights — G+22 Residential Tower</div>
+          <div class="project-location">
+            <svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+            Andheri East, Mumbai · 2021–2023
+          </div>
+          <div class="project-section-head">Responsibilities</div>
+          <ul class="project-list">
+            <li>Structural design of RC frame using ETABS &amp; STAAD Pro</li>
+            <li>Supervised pile foundation &amp; raft slab execution</li>
+            <li>Managed 45-member site team across 3 shifts</li>
+            <li>Coordinated MEP interface &amp; façade contractors</li>
+          </ul>
+          <div class="project-outcomes">
+            <div class="outcome-chip">
+              <svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
+              Delivered 3 wks early
+            </div>
+            <div class="outcome-chip">
+              <svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
+              8% cost savings
+            </div>
+            <div class="outcome-chip">
+              <svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
+              Zero NCRs raised
+            </div>
+          </div>
+        </div>
+      </article>
+
+      <!-- Project 2 -->
+      <article class="project-card fade-up delay-1">
+        <div class="project-banner commercial"></div>
+        <div class="project-body">
+          <span class="project-badge badge-commercial">
+            <svg width="10" height="10" fill="currentColor" viewBox="0 0 24 24"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/></svg>
+            Commercial
+          </span>
+          <div class="project-title">Nexus Business Park — Phase II</div>
+          <div class="project-location">
+            <svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+            Bandra–Kurla Complex, Mumbai · 2019–2021
+          </div>
+          <div class="project-section-head">Responsibilities</div>
+          <ul class="project-list">
+            <li>Lead engineer for 3.2L sq.ft. Grade-A office complex</li>
+            <li>Designed post-tensioned slabs &amp; transfer beams</li>
+            <li>BOQ preparation &amp; vendor rate negotiation</li>
+            <li>Liaised with PMC &amp; statutory approvals (BMC)</li>
+          </ul>
+          <div class="project-outcomes">
+            <div class="outcome-chip">
+              <svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
+              LEED Gold certified
+            </div>
+            <div class="outcome-chip">
+              <svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
+              ₹ 12Cr under budget
+            </div>
+          </div>
+        </div>
+      </article>
+
+      <!-- Project 3 -->
+      <article class="project-card fade-up delay-2">
+        <div class="project-banner infra"></div>
+        <div class="project-body">
+          <span class="project-badge badge-infra">
+            <svg width="10" height="10" fill="currentColor" viewBox="0 0 24 24"><path d="M2 20h20M4 20V8l8-6 8 6v12"/></svg>
+            Infrastructure
+          </span>
+          <div class="project-title">NH-48 Six-Lane Flyover — Khopoli</div>
+          <div class="project-location">
+            <svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+            Khopoli, Maharashtra · 2016–2019
+          </div>
+          <div class="project-section-head">Responsibilities</div>
+          <ul class="project-list">
+            <li>Structural design of 1.4 km prestressed concrete flyover</li>
+            <li>Oversaw segmental launching operations</li>
+            <li>QA/QC testing: cube strength, rebar checks, deflection</li>
+            <li>Coordination with NHAI authorities &amp; IRC compliance</li>
+          </ul>
+          <div class="project-outcomes">
+            <div class="outcome-chip">
+              <svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
+              1.4 km span delivered
+            </div>
+            <div class="outcome-chip">
+              <svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
+              NHAI commendation
+            </div>
+            <div class="outcome-chip">
+              <svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
+              Zero fatalities
+            </div>
+          </div>
+        </div>
+      </article>
+
+      <!-- Project 4 -->
+      <article class="project-card fade-up delay-3">
+        <div class="project-banner residential"></div>
+        <div class="project-body">
+          <span class="project-badge badge-residential">
+            <svg width="10" height="10" fill="currentColor" viewBox="0 0 24 24"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
+            Residential
+          </span>
+          <div class="project-title">Greenfield Township — Integrated Housing</div>
+          <div class="project-location">
+            <svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+            Pune, Maharashtra · 2014–2016
+          </div>
+          <div class="project-section-head">Responsibilities</div>
+          <ul class="project-list">
+            <li>Site management for 800-unit township development</li>
+            <li>Executed internal roads, STP &amp; storm drainage network</li>
+            <li>Daily MIS reporting, material reconciliation</li>
+            <li>Managed labour deployment and sub-contractor billing</li>
+          </ul>
+          <div class="project-outcomes">
+            <div class="outcome-chip">
+              <svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
+              800 units handed over
+            </div>
+            <div class="outcome-chip">
+              <svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
+              On-schedule delivery
+            </div>
+          </div>
+        </div>
+      </article>
+
+    </div>
+  </div>
+</section>
+
+<div class="section-divider"></div>
+
+<!-- ═══════════════════════════════════════════════════════ SKILLS -->
+<section class="section" id="skills">
+  <div class="container">
+    <div class="section-label fade-up">Technical Proficiency</div>
+    <h2 class="section-title fade-up delay-1">Technical Skills</h2>
+    <div class="skills-layout">
+      <div class="skill-group fade-up delay-1">
+        <div class="skill-row">
+          <div class="skill-header">
+            <div class="skill-name">
+              <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>
+              Structural Design
+            </div>
+            <span class="skill-pct">95%</span>
+          </div>
+          <div class="skill-bar"><div class="skill-fill" style="width:95%"></div></div>
+        </div>
+        <div class="skill-row">
+          <div class="skill-header">
+            <div class="skill-name">
+              <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+              Cost Estimation &amp; BOQ
+            </div>
+            <span class="skill-pct">90%</span>
+          </div>
+          <div class="skill-bar"><div class="skill-fill" style="width:90%"></div></div>
+        </div>
+        <div class="skill-row">
+          <div class="skill-header">
+            <div class="skill-name">
+              <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+              Site Management
+            </div>
+            <span class="skill-pct">92%</span>
+          </div>
+          <div class="skill-bar"><div class="skill-fill" style="width:92%"></div></div>
+        </div>
+      </div>
+      <div class="skill-group fade-up delay-2">
+        <div class="skill-row">
+          <div class="skill-header">
+            <div class="skill-name">
+              <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+              QA / QC
+            </div>
+            <span class="skill-pct">93%</span>
+          </div>
+          <div class="skill-bar"><div class="skill-fill" style="width:93%"></div></div>
+        </div>
+        <div class="skill-row">
+          <div class="skill-header">
+            <div class="skill-name">
+              <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg>
+              Client &amp; Stakeholder Management
+            </div>
+            <span class="skill-pct">85%</span>
+          </div>
+          <div class="skill-bar"><div class="skill-fill" style="width:85%"></div></div>
+        </div>
+        <div class="skill-row">
+          <div class="skill-header">
+            <div class="skill-name">
+              <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+              IS / IRC Code Compliance
+            </div>
+            <span class="skill-pct">96%</span>
+          </div>
+          <div class="skill-bar"><div class="skill-fill" style="width:96%"></div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<div class="section-divider"></div>
+
+<!-- ═══════════════════════════════════════════════════════ TOOLS -->
+<section class="section section--alt" id="tools">
+  <div class="container">
+    <div class="section-label fade-up">Software Proficiency</div>
+    <h2 class="section-title fade-up delay-1">Tools &amp; Software</h2>
+    <div class="tools-grid">
+
+      <div class="tool-card fade-up">
+        <div class="tool-icon">
+          <svg width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M7 8h10M7 12h10M7 16h6"/></svg>
+        </div>
+        <div class="tool-name">STAAD Pro</div>
+        <div class="tool-category">Structural Analysis</div>
+      </div>
+
+      <div class="tool-card fade-up delay-1">
+        <div class="tool-icon">
+          <svg width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><polygon points="12 2 22 8.5 22 15.5 12 22 2 15.5 2 8.5 12 2"/><line x1="12" y1="2" x2="12" y2="22"/><line x1="2" y1="8.5" x2="22" y2="8.5"/><line x1="2" y1="15.5" x2="22" y2="15.5"/></svg>
+        </div>
+        <div class="tool-name">ETABS</div>
+        <div class="tool-category">Building Analysis</div>
+      </div>
+
+      <div class="tool-card fade-up delay-2">
+        <div class="tool-icon">
+          <svg width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M3 3h18v18H3z"/><path d="M8 8l8 8M16 8l-8 8"/></svg>
+        </div>
+        <div class="tool-name">AutoCAD</div>
+        <div class="tool-category">2D / 3D Drafting</div>
+      </div>
+
+      <div class="tool-card fade-up delay-3">
+        <div class="tool-icon">
+          <svg width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+        </div>
+        <div class="tool-name">Primavera P6</div>
+        <div class="tool-category">Project Scheduling</div>
+      </div>
+
+      <div class="tool-card fade-up">
+        <div class="tool-icon">
+          <svg width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
+        </div>
+        <div class="tool-name">Revit</div>
+        <div class="tool-category">BIM Modelling</div>
+      </div>
+
+      <div class="tool-card fade-up delay-1">
+        <div class="tool-icon">
+          <svg width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+        </div>
+        <div class="tool-name">MS Project</div>
+        <div class="tool-category">Project Planning</div>
+      </div>
+
+      <div class="tool-card fade-up delay-2">
+        <div class="tool-icon">
+          <svg width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+        </div>
+        <div class="tool-name">SAFE</div>
+        <div class="tool-category">Foundation Design</div>
+      </div>
+
+      <div class="tool-card fade-up delay-3">
+        <div class="tool-icon">
+          <svg width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+        </div>
+        <div class="tool-name">MS Excel</div>
+        <div class="tool-category">Estimation &amp; Data</div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<div class="section-divider"></div>
+
+<!-- ═══════════════════════════════════════════════════════ CERTS -->
+<section class="section" id="certifications">
+  <div class="container">
+    <div class="section-label fade-up">Credentials</div>
+    <h2 class="section-title fade-up delay-1">Certifications &amp; Licenses</h2>
+    <div class="certs-grid">
+
+      <div class="cert-card fade-up">
+        <div class="cert-seal">PE</div>
+        <div class="cert-body">
+          <div class="cert-title">Professional Engineer (PE) License</div>
+          <div class="cert-issuer">Maharashtra Council of Engineers</div>
+          <div class="cert-meta">
+            <span class="cert-tag">License #MH-CE-20130876</span>
+            <span class="cert-tag active">Active · 2026</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="cert-card fade-up delay-1">
+        <div class="cert-seal">PMP</div>
+        <div class="cert-body">
+          <div class="cert-title">Project Management Professional</div>
+          <div class="cert-issuer">Project Management Institute (PMI)</div>
+          <div class="cert-meta">
+            <span class="cert-tag">PMI #4782910</span>
+            <span class="cert-tag active">Active · 2025</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="cert-card fade-up delay-2">
+        <div class="cert-seal">QC</div>
+        <div class="cert-body">
+          <div class="cert-title">Certified QA/QC Engineer</div>
+          <div class="cert-issuer">Bureau of Indian Standards (BIS)</div>
+          <div class="cert-meta">
+            <span class="cert-tag">Structural &amp; Infra</span>
+            <span class="cert-tag active">Active · 2024</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="cert-card fade-up delay-3">
+        <div class="cert-seal">ME</div>
+        <div class="cert-body">
+          <div class="cert-title">M.Tech – Structural Engineering</div>
+          <div class="cert-issuer">VJTI Mumbai · University of Mumbai</div>
+          <div class="cert-meta">
+            <span class="cert-tag">Gold Medalist</span>
+            <span class="cert-tag">Graduated 2012</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="cert-card fade-up">
+        <div class="cert-seal">BIM</div>
+        <div class="cert-body">
+          <div class="cert-title">Autodesk Revit BIM Specialist</div>
+          <div class="cert-issuer">Autodesk Certified Professional</div>
+          <div class="cert-meta">
+            <span class="cert-tag">ACP #MH20221089</span>
+            <span class="cert-tag active">Active · 2025</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="cert-card fade-up delay-1">
+        <div class="cert-seal">HS</div>
+        <div class="cert-body">
+          <div class="cert-title">Construction Safety &amp; Health</div>
+          <div class="cert-issuer">National Safety Council of India</div>
+          <div class="cert-meta">
+            <span class="cert-tag">Site Safety Lead</span>
+            <span class="cert-tag active">Active · 2026</span>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<div class="section-divider"></div>
+
+<!-- ═══════════════════════════════════════════════════════ CONTACT -->
+<section class="section contact-section" id="contact">
+  <div class="container">
+    <div class="contact-grid">
+      <div class="contact-text fade-up">
+        <div class="section-label">Get In Touch</div>
+        <h2 class="section-title">Let's Build<br>Something Together</h2>
+        <p class="contact-tagline">
+          Open to consulting engagements, full-time roles, and project-based collaborations 
+          across residential, commercial, and infrastructure sectors.
+        </p>
+        <div style="margin-top:2rem">
+          <a href="mailto:marcus.holloway@example.com" class="btn btn-primary">
+            <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+            Send an Email
+          </a>
+        </div>
+      </div>
+      <div class="contact-cards fade-up delay-2">
+        <div class="contact-item">
+          <div class="contact-icon">
+            <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+          </div>
+          <div>
+            <div class="contact-label">Email</div>
+            <div class="contact-value">marcus.holloway@example.com</div>
+          </div>
+        </div>
+        <div class="contact-item">
+          <div class="contact-icon">
+            <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.15 12 19.79 19.79 0 0 1 1.08 3.41 2 2 0 0 1 3.05 1h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L7.09 8.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 21 16z"/></svg>
+          </div>
+          <div>
+            <div class="contact-label">Phone</div>
+            <div class="contact-value">+91 98200 43781</div>
+          </div>
+        </div>
+        <div class="contact-item">
+          <div class="contact-icon">
+            <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+          </div>
+          <div>
+            <div class="contact-label">Location</div>
+            <div class="contact-value">Mumbai, Maharashtra, India</div>
+          </div>
+        </div>
+        <div class="contact-item">
+          <div class="contact-icon">
+            <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M16 8a6 6 0 0 1 6 6v7h-4v-7a2 2 0 0 0-2-2 2 2 0 0 0-2 2v7h-4v-7a6 6 0 0 1 6-6z"/><rect x="2" y="9" width="4" height="12"/><circle cx="4" cy="4" r="2"/></svg>
+          </div>
+          <div>
+            <div class="contact-label">LinkedIn</div>
+            <div class="contact-value">linkedin.com/in/marcus-holloway-ce</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════ FOOTER -->
+<footer class="footer">
+  <div class="container">
+    Marcus R. Holloway · Senior Civil Engineer · <span>© 2026</span> · Mumbai, India
+  </div>
+</footer>
+
+<!-- ═══════════════════════════════════════════════════════ SCRIPTS -->
+<script>
+  // Intersection observer for fade-up animations
+  const observer = new IntersectionObserver((entries) => {
+    entries.forEach(e => {
+      if (e.isIntersecting) { e.target.classList.add('visible'); }
+    });
+  }, { threshold: 0.12 });
+  document.querySelectorAll('.fade-up').forEach(el => observer.observe(el));
+
+  // Animate skill bars when in view
+  const barObserver = new IntersectionObserver((entries) => {
+    entries.forEach(e => {
+      if (e.isIntersecting) {
+        e.target.querySelectorAll('.skill-fill').forEach((bar, i) => {
+          bar.style.animationDelay = (i * .15) + 's';
+          bar.style.animationPlayState = 'running';
+        });
+      }
+    });
+  }, { threshold: 0.3 });
+  document.querySelectorAll('.skill-group').forEach(g => {
+    g.querySelectorAll('.skill-fill').forEach(b => b.style.animationPlayState = 'paused');
+    barObserver.observe(g);
+  });
+</script>
+
+</body>
+</html>

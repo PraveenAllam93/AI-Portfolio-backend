@@ -183,6 +183,15 @@ variable "cancel_upload_lambda_invoke_arn" {
   type        = string
 }
 
+variable "start_generation_lambda_arn" {
+  description = "ARN of the start generation Lambda"
+  type        = string
+}
+variable "start_generation_lambda_invoke_arn" {
+  description = "Invoke ARN of the start generation Lambda"
+  type        = string
+}
+
 variable "list_versions_lambda_arn" {
   description = "ARN of the list versions Lambda"
   type        = string
@@ -234,5 +243,14 @@ variable "toggle_portfolio_live_lambda_arn" {
 }
 variable "toggle_portfolio_live_lambda_invoke_arn" {
   description = "Invoke ARN of the toggle portfolio live Lambda"
+  type        = string
+}
+
+variable "get_portfolio_preview_url_lambda_arn" {
+  description = "ARN of the get portfolio preview URL Lambda"
+  type        = string
+}
+variable "get_portfolio_preview_url_lambda_invoke_arn" {
+  description = "Invoke ARN of the get portfolio preview URL Lambda"
   type        = string
 }

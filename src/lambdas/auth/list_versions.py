@@ -42,13 +42,15 @@ def lambda_handler(event, context):
 
         table = dynamodb.Table(DYNAMODB_TABLE)
 
-        # Get active version from PORTFOLIO#{uploadId}
+        # Get active version and live status from PORTFOLIO#{uploadId}
         current_res = table.get_item(
             Key={'PK': f'USER#{user_id}', 'SK': f'PORTFOLIO#{upload_id}'}
         )
         active_version = None
+        portfolio_is_live = False
         if 'Item' in current_res:
             active_version = current_res['Item'].get('activeVersion')
+            portfolio_is_live = bool(current_res['Item'].get('isLive', False))
 
         # Query all version snapshot records for this upload
         response = table.query(
@@ -84,6 +86,7 @@ def lambda_handler(event, context):
         return _response(200, {
             'versions': versions,
             'activeVersion': active_version,
+            'portfolioIsLive': portfolio_is_live,
             'total': len(versions)
         })
 

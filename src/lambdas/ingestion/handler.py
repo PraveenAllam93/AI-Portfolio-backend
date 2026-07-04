@@ -1,13 +1,20 @@
 """
 Lambda: Resume Ingestion
 Triggered when a file is promoted to the validated bucket.
-Extracts text from the resume and pushes a job to SQS for AI processing.
+Extracts text from the resume, classifies the profession, then PAUSES the
+pipeline so the user can confirm/override the auto-detected profession and pick
+a template. The start_generation Lambda resumes the pipeline (queues AI
+processing) once the user has made a selection.
 
 Security notes:
   - upload_id is read from S3 metadata (stamped by quarantine validator).
     If missing, the item is rejected — no silent fallback to 'unknown'.
-  - Raw resume text is NOT stored in DynamoDB to avoid PII accumulation.
-    Only text length is recorded for observability.
+  - The extracted text is written to the (trusted) validated bucket so the
+    paused pipeline can resume without re-extracting. It is NOT stored in
+    DynamoDB. Only the text length is recorded there for observability.
+  - Profession classification runs on text already extracted from a VALIDATED
+    file (on-doctrine: AI is never invoked on unvalidated input). It is
+    advisory only — failure degrades to manual selection, never blocks.
   - Structured JSON logging with correlation ID for every entry.
 """
 
@@ -19,14 +26,13 @@ from urllib.parse import unquote_plus
 from datetime import datetime, timezone
 
 s3_client = boto3.client('s3')
-sqs_client = boto3.client('sqs')
 dynamodb = boto3.resource('dynamodb')
 lambda_client = boto3.client('lambda')
 
 VALIDATED_BUCKET = os.environ.get('VALIDATED_BUCKET')
 DYNAMODB_TABLE = os.environ.get('DYNAMODB_TABLE')
-PROCESSING_QUEUE = os.environ.get('PROCESSING_QUEUE')
-PORTFOLIO_LAMBDA_NAME = os.environ.get('PORTFOLIO_LAMBDA_NAME')
+# Name of the classify_profession Lambda invoked synchronously after extraction.
+CLASSIFY_LAMBDA_NAME = os.environ.get('CLASSIFY_LAMBDA_NAME')
 
 # Minimum resume keyword hits to pass the ATS pre-screen.
 _RESUME_KEYWORDS = [
@@ -93,6 +99,13 @@ def lambda_handler(event, context):
         filename = parts[1]
         ext = os.path.splitext(filename)[1].lower()
 
+        # Ignore our own extracted-text artifact ({uploadId}.txt). It is written
+        # to this same bucket after extraction, which re-fires ObjectCreated.
+        # The bucket notification has no suffix filter, so guard here to avoid
+        # reprocessing (which would clobber AWAITING_SELECTION and error).
+        if ext == '.txt':
+            return {'statusCode': 200, 'body': 'Skipping extracted-text artifact'}
+
         # Read upload_id from S3 metadata stamped by the quarantine validator.
         # Without this we cannot update the correct DynamoDB record — fail
         # loudly rather than silently writing to SK: UPLOAD#unknown.
@@ -108,19 +121,9 @@ def lambda_handler(event, context):
             )
             return {'statusCode': 400, 'body': 'Missing uploadId metadata'}
 
-        # Read category and templateId from the DynamoDB UPLOAD record.
-        table = dynamodb.Table(DYNAMODB_TABLE)
-        upload_record = table.get_item(
-            Key={
-                'PK': f'USER#{user_id}',
-                'SK': f'UPLOAD#{upload_id}',
-            },
-            ProjectionExpression='category, templateId',
-        )
-        upload_item = upload_record.get('Item', {})
-        category = upload_item.get('category', 'software_engineer')
-        template_id = upload_item.get('templateId', 'minimal')
-
+        # category / templateId are NOT read here: the pipeline pauses after
+        # extraction so the user can confirm them. start_generation reads/writes
+        # them when it resumes the pipeline.
         _update_status(user_id, upload_id, 'EXTRACTING_TEXT')
 
         response = s3_client.get_object(Bucket=bucket, Key=key)
@@ -179,73 +182,71 @@ def lambda_handler(event, context):
                 uploadId=upload_id,
             )
 
-        # Dedup: check if this exact content has been processed before.
-        cached = _get_cached_result(content_hash, correlation_id)
-        if cached:
-            _log_info(
-                "Content hash match — reusing cached AI result",
+        # Persist the extracted text to the (trusted) validated bucket so the
+        # paused pipeline can resume without re-extracting. NOT stored in
+        # DynamoDB (PII). start_generation reads it back by this key.
+        text_key = f"{user_id}/{upload_id}.txt"
+        s3_client.put_object(
+            Bucket=VALIDATED_BUCKET,
+            Key=text_key,
+            Body=text.encode('utf-8'),
+            ContentType='text/plain; charset=utf-8',
+            Metadata={'uploadid': upload_id},
+        )
+
+        # Classify the profession (advisory) AND gate on "is this a resume?".
+        # On-doctrine: runs on validated, server-extracted text. The same call
+        # returns is_resume; failure fails open (is_resume=True) so a real
+        # resume is never rejected because the classifier was unavailable.
+        predicted_profession, predicted_confidence, is_resume = _classify_profession(
+            text, correlation_id
+        )
+
+        # RESUME GATE: reject non-resumes here — before the pipeline pauses for
+        # profession/template selection. The user should not be asked to pick a
+        # template for a document we are about to reject, and AI must not parse
+        # it. INVALID_DOCUMENT is a terminal status the frontend surfaces with a
+        # human-readable message.
+        if not is_resume:
+            _log_warning(
+                "Document is not a resume — rejecting before AI parsing",
                 correlationId=correlation_id,
                 userId=user_id,
                 uploadId=upload_id,
-                contentHash=content_hash,
             )
-            _update_status(user_id, upload_id, 'AI_COMPLETE', {
-                'parsedData': json.dumps(cached['parsedData']),
-                'portfolioContent': json.dumps(cached['portfolioContent']),
-                'rawTextLength': text_length,
+            _update_status(user_id, upload_id, 'INVALID_DOCUMENT', {
+                'failureMessage': (
+                    'The uploaded document does not appear to be a resume. '
+                    'Please upload a resume (CV) in PDF or DOCX format.'
+                ),
             })
-            # Trigger portfolio generation directly with the cached data.
-            _trigger_portfolio_generation(
-                user_id, upload_id, category, template_id, correlation_id,
-                cached['parsedData'], cached['portfolioContent'],
-            )
-            return {'statusCode': 200, 'body': 'Used cached result'}
+            return {'statusCode': 200, 'body': 'Rejected: not a resume'}
 
-        # Record text extraction — length only, NOT the text itself.
-        _update_status(user_id, upload_id, 'QUEUED_FOR_AI', {
+        # PAUSE the pipeline. The user confirms/overrides the profession and
+        # picks a template; start_generation then queues AI processing.
+        extra = {
             'rawTextLength': text_length,
-        })
-
-        sqs_client.send_message(
-            QueueUrl=PROCESSING_QUEUE,
-            MessageBody=json.dumps({
-                'userId': user_id,
-                'uploadId': upload_id,
-                'resumeText': text,
-                'filename': filename,
-                's3Key': key,
-                'category': category,
-                'templateId': template_id,
-                'contentHash': content_hash,
-                'atsFailed': ats_failed,
-                'timestamp': datetime.now(timezone.utc).isoformat(),
-            }),
-            MessageAttributes={
-                'userId': {
-                    'DataType': 'String',
-                    'StringValue': user_id,
-                },
-                'uploadId': {
-                    'DataType': 'String',
-                    'StringValue': upload_id,
-                },
-                'category': {
-                    'DataType': 'String',
-                    'StringValue': category,
-                },
-            },
-        )
+            'rawTextS3Key': text_key,
+            'contentHash': content_hash,
+            'atsFailed': ats_failed,
+            'predictedConfidence': predicted_confidence,
+        }
+        if predicted_profession:
+            extra['predictedProfession'] = predicted_profession
+        _update_status(user_id, upload_id, 'AWAITING_SELECTION', extra)
 
         _log_info(
-            "Queued for AI processing",
+            "Paused for profession selection",
             correlationId=correlation_id,
             userId=user_id,
             uploadId=upload_id,
             textLength=text_length,
             contentHash=content_hash,
             atsFailed=ats_failed,
+            predictedProfession=predicted_profession,
+            predictedConfidence=predicted_confidence,
         )
-        return {'statusCode': 200, 'body': 'Queued for processing'}
+        return {'statusCode': 200, 'body': 'Awaiting profession selection'}
 
     except Exception as e:
         _log_error(
@@ -263,88 +264,47 @@ def _passes_ats_check(text: str) -> bool:
     return hits >= _RESUME_MIN_KEYWORD_HITS
 
 
-def _get_cached_result(content_hash: str, correlation_id: str) -> dict | None:
-    """Return cached parsedData+portfolioContent dict, or None on miss."""
+def _classify_profession(
+    text: str, correlation_id: str
+) -> tuple[str | None, int, bool]:
+    """Synchronously invoke the classify_profession Lambda.
+
+    Returns (profession|None, confidence:int, is_resume:bool). Never raises —
+    classification is advisory, so any failure degrades to (None, 0) for the
+    profession. The resume gate FAILS OPEN: any failure returns is_resume=True
+    so we never reject a genuine resume because the classifier was unavailable.
+    """
+    if not CLASSIFY_LAMBDA_NAME:
+        return None, 0, True
     try:
-        table = dynamodb.Table(DYNAMODB_TABLE)
-        resp = table.get_item(
-            Key={
-                'PK': f'CONTENT#{content_hash}',
-                'SK': 'PARSED',
-            },
-            ProjectionExpression='parsedData, portfolioContent',
+        resp = lambda_client.invoke(
+            FunctionName=CLASSIFY_LAMBDA_NAME,
+            InvocationType='RequestResponse',
+            Payload=json.dumps({
+                'resumeText': text,
+                'correlationId': correlation_id,
+            }),
         )
-        item = resp.get('Item')
-        if not item or 'parsedData' not in item:
-            return None
-        parsed = item['parsedData']
-        portfolio = item.get('portfolioContent', '{}')
-        if isinstance(parsed, str):
-            parsed = json.loads(parsed)
-        if isinstance(portfolio, str):
-            portfolio = json.loads(portfolio)
-        return {'parsedData': parsed, 'portfolioContent': portfolio}
+        payload = json.loads(resp['Payload'].read() or b'{}')
+        # classify_profession returns a plain dict on success; if it errored at
+        # the Lambda layer the payload may contain errorMessage instead.
+        if not isinstance(payload, dict) or 'profession' not in payload:
+            return None, 0, True
+        profession = payload.get('profession') or None
+        try:
+            confidence = int(payload.get('confidence', 0) or 0)
+        except (TypeError, ValueError):
+            confidence = 0
+        # Only a clearly-false verdict blocks; missing/garbled → fail open.
+        is_resume = payload.get('isResume', True) is not False
+        return profession, max(0, min(100, confidence)), is_resume
     except Exception as e:
         _log_error(
-            "Dedup cache lookup error — will queue for AI",
+            "Profession classification failed — defaulting to manual selection",
             correlationId=correlation_id,
             error=str(e),
         )
-        return None
-
-
-def _trigger_portfolio_generation(
-    user_id: str,
-    upload_id: str,
-    category: str,
-    template_id: str,
-    correlation_id: str,
-    parsed_data: dict | None = None,
-    portfolio_content: dict | None = None,
-) -> None:
-    """Write PORTFOLIO record and invoke portfolio generator Lambda (dedup fast-path)."""
-    # Write the PORTFOLIO#{upload_id} record so the portfolio-generator can read it.
-    # This mirrors what ai_processing._trigger_portfolio_generation does.
-    if parsed_data is not None and portfolio_content is not None:
-        table = dynamodb.Table(DYNAMODB_TABLE)
-        table.put_item(Item={
-            'PK': f'USER#{user_id}',
-            'SK': f'PORTFOLIO#{upload_id}',
-            'userId': user_id,
-            'uploadId': upload_id,
-            'category': category,
-            'templateId': template_id,
-            'parsedData': parsed_data,
-            'portfolioContent': portfolio_content,
-            'version': 0,
-            'isLive': False,
-            'createdAt': datetime.now(timezone.utc).isoformat(),
-            'status': 'GENERATING',
-        })
-        _update_status(user_id, upload_id, 'GENERATING')
-
-    if not PORTFOLIO_LAMBDA_NAME:
-        return
-    try:
-        lambda_client.invoke(
-            FunctionName=PORTFOLIO_LAMBDA_NAME,
-            InvocationType='Event',
-            Payload=json.dumps({'userId': user_id, 'uploadId': upload_id}),
-        )
-        _log_info(
-            "Portfolio generation triggered (dedup fast-path)",
-            correlationId=correlation_id,
-            userId=user_id,
-            uploadId=upload_id,
-        )
-    except Exception as e:
-        _log_error(
-            "Failed to trigger portfolio generation",
-            correlationId=correlation_id,
-            userId=user_id,
-            uploadId=upload_id,
-            error=str(e),
-        )
+        return None, 0, True
 
 
 def _extract_pdf_ocr(content: bytes, correlation_id: str) -> str:

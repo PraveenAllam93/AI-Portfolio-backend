@@ -1,0 +1,762 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Civil Engineering Portfolio</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700&family=Open+Sans:wght@400;600&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --primary-blue: #2c3e50;
+            --secondary-blue: #3498db;
+            --accent-blue: #2980b9;
+            --light-gray: #f5f7fa;
+            --medium-gray: #ecf0f1;
+            --dark-gray: #7f8c8d;
+            --text-dark: #2c3e50;
+            --text-light: #ffffff;
+            --border-color: #dcdde1;
+            --shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        html {
+            scroll-behavior: smooth;
+        }
+
+        body {
+            font-family: 'Open Sans', sans-serif;
+            color: var(--text-dark);
+            line-height: 1.6;
+            background-color: #fff;
+        }
+
+        h1, h2, h3, h4 {
+            font-family: 'Montserrat', sans-serif;
+            font-weight: 600;
+            margin-bottom: 1rem;
+        }
+
+        h1 {
+            font-size: 2.5rem;
+            color: var(--primary-blue);
+        }
+
+        h2 {
+            font-size: 2rem;
+            color: var(--primary-blue);
+            position: relative;
+            padding-bottom: 0.5rem;
+        }
+
+        h2::after {
+            content: '';
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            width: 60px;
+            height: 4px;
+            background-color: var(--secondary-blue);
+        }
+
+        h3 {
+            font-size: 1.5rem;
+            color: var(--accent-blue);
+        }
+
+        .container {
+            width: 90%;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 20px;
+        }
+
+        section {
+            padding: 5rem 0;
+        }
+
+        .section-light {
+            background-color: var(--light-gray);
+        }
+
+        .section-dark {
+            background-color: var(--primary-blue);
+            color: var(--text-light);
+        }
+
+        .section-dark h2 {
+            color: var(--text-light);
+        }
+
+        /* Header & Navigation */
+        header {
+            background-color: var(--primary-blue);
+            position: fixed;
+            width: 100%;
+            top: 0;
+            z-index: 1000;
+            box-shadow: var(--shadow);
+        }
+
+        .nav-container {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 1rem 0;
+        }
+
+        .logo {
+            font-family: 'Montserrat', sans-serif;
+            font-size: 1.8rem;
+            font-weight: 700;
+            color: var(--text-light);
+            text-decoration: none;
+        }
+
+        .logo span {
+            color: var(--secondary-blue);
+        }
+
+        nav ul {
+            display: flex;
+            list-style: none;
+        }
+
+        nav ul li {
+            margin-left: 2rem;
+        }
+
+        nav ul li a {
+            color: var(--text-light);
+            text-decoration: none;
+            font-weight: 500;
+            transition: color 0.3s;
+        }
+
+        nav ul li a:hover {
+            color: var(--secondary-blue);
+        }
+
+        .mobile-menu-btn {
+            display: none;
+            background: none;
+            border: none;
+            color: var(--text-light);
+            font-size: 1.5rem;
+            cursor: pointer;
+        }
+
+        /* Hero Section */
+        .hero {
+            padding: 10rem 0 5rem;
+            background: linear-gradient(rgba(44, 62, 80, 0.9), rgba(44, 62, 80, 0.9)), url('https://images.unsplash.com/photo-1504307651254-35680f356dfd?ixlib=rb-1.2.1&auto=format&fit=crop&w=1600&q=80');
+            background-size: cover;
+            background-position: center;
+            color: var(--text-light);
+            text-align: center;
+        }
+
+        .hero-content {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+
+        .profile-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            margin-bottom: 2rem;
+        }
+
+        .profile-photo {
+            width: 200px;
+            height: 200px;
+            border-radius: 50%;
+            object-fit: cover;
+            border: 5px solid var(--secondary-blue);
+            margin-bottom: 1.5rem;
+            box-shadow: var(--shadow);
+        }
+
+        .hero h1 {
+            color: var(--text-light);
+            font-size: 3rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .designation {
+            font-size: 1.5rem;
+            color: var(--secondary-blue);
+            margin-bottom: 1rem;
+            font-weight: 500;
+        }
+
+        .experience {
+            font-size: 1.2rem;
+            margin-bottom: 2rem;
+            color: var(--medium-gray);
+        }
+
+        /* Professional Summary */
+        .summary-content {
+            display: flex;
+            align-items: center;
+            gap: 3rem;
+        }
+
+        .summary-image {
+            flex: 1;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: var(--shadow);
+        }
+
+        .summary-image img {
+            width: 100%;
+            height: 300px;
+            object-fit: cover;
+            transition: transform 0.5s;
+        }
+
+        .summary-image img:hover {
+            transform: scale(1.03);
+        }
+
+        .summary-text {
+            flex: 1;
+        }
+
+        .summary-text p {
+            margin-bottom: 1.5rem;
+            font-size: 1.1rem;
+        }
+
+        /* Projects */
+        .projects-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+            gap: 2rem;
+            margin-top: 2rem;
+        }
+
+        .project-card {
+            background-color: white;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: var(--shadow);
+            transition: transform 0.3s;
+        }
+
+        .project-card:hover {
+            transform: translateY(-10px);
+        }
+
+        .project-image {
+            height: 200px;
+            overflow: hidden;
+        }
+
+        .project-image img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        .project-content {
+            padding: 1.5rem;
+        }
+
+        .project-type {
+            display: inline-block;
+            background-color: var(--medium-gray);
+            color: var(--primary-blue);
+            padding: 0.3rem 0.8rem;
+            border-radius: 20px;
+            font-size: 0.9rem;
+            margin-bottom: 1rem;
+        }
+
+        .responsibilities {
+            margin: 1rem 0;
+        }
+
+        .responsibilities li {
+            margin-left: 1.2rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .outcome {
+            font-weight: 600;
+            color: var(--accent-blue);
+            margin-top: 1rem;
+            padding-top: 1rem;
+            border-top: 1px solid var(--border-color);
+        }
+
+        /* Skills & Tools */
+        .skills-container {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 3rem;
+            margin-top: 2rem;
+        }
+
+        .skill-category h3 {
+            margin-bottom: 1.5rem;
+        }
+
+        .skill-list {
+            list-style: none;
+        }
+
+        .skill-list li {
+            display: flex;
+            align-items: center;
+            margin-bottom: 1rem;
+            padding: 0.8rem;
+            background-color: white;
+            border-radius: 6px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+        }
+
+        .skill-list i {
+            color: var(--secondary-blue);
+            font-size: 1.2rem;
+            margin-right: 1rem;
+            width: 24px;
+            text-align: center;
+        }
+
+        /* Certifications & Contact */
+        .certifications-list {
+            list-style: none;
+            margin-top: 2rem;
+        }
+
+        .certifications-list li {
+            display: flex;
+            align-items: center;
+            margin-bottom: 1.2rem;
+            padding-bottom: 1.2rem;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .certifications-list i {
+            color: var(--secondary-blue);
+            font-size: 1.2rem;
+            margin-right: 1rem;
+        }
+
+        .contact-container {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 3rem;
+            margin-top: 2rem;
+        }
+
+        .contact-info {
+            background-color: white;
+            color: var(--text-dark);
+            padding: 2rem;
+            border-radius: 8px;
+            box-shadow: var(--shadow);
+        }
+
+        .contact-info h3 {
+            margin-bottom: 1.5rem;
+        }
+
+        .contact-info p {
+            display: flex;
+            align-items: center;
+            margin-bottom: 1rem;
+        }
+
+        .contact-info i {
+            color: var(--secondary-blue);
+            margin-right: 1rem;
+            width: 20px;
+        }
+
+        /* Footer */
+        footer {
+            background-color: #1a252f;
+            color: var(--text-light);
+            text-align: center;
+            padding: 2rem 0;
+        }
+
+        .footer-content {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        .copyright {
+            margin-top: 1rem;
+            width: 100%;
+            color: var(--dark-gray);
+            font-size: 0.9rem;
+        }
+
+        /* Responsive Design */
+        @media (max-width: 992px) {
+            .summary-content {
+                flex-direction: column;
+            }
+            
+            .summary-image, .summary-text {
+                width: 100%;
+            }
+        }
+
+        @media (max-width: 768px) {
+            h1 {
+                font-size: 2rem;
+            }
+            
+            h2 {
+                font-size: 1.8rem;
+            }
+            
+            .hero {
+                padding: 8rem 0 3rem;
+            }
+            
+            .mobile-menu-btn {
+                display: block;
+            }
+            
+            nav ul {
+                position: fixed;
+                top: 70px;
+                left: -100%;
+                flex-direction: column;
+                background-color: var(--primary-blue);
+                width: 100%;
+                text-align: center;
+                transition: 0.3s;
+                box-shadow: 0 10px 27px rgba(0, 0, 0, 0.05);
+                padding: 1rem 0;
+            }
+            
+            nav ul.active {
+                left: 0;
+            }
+            
+            nav ul li {
+                margin: 1.5rem 0;
+            }
+            
+            .footer-content {
+                flex-direction: column;
+                text-align: center;
+            }
+        }
+
+        @media (max-width: 576px) {
+            section {
+                padding: 3rem 0;
+            }
+            
+            .profile-photo {
+                width: 150px;
+                height: 150px;
+            }
+            
+            .hero h1 {
+                font-size: 1.8rem;
+            }
+            
+            .designation {
+                font-size: 1.2rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- Header & Navigation -->
+    <header>
+        <div class="container nav-container">
+            <a href="#" class="logo">Civil<span>Portfolio</span></a>
+            <button class="mobile-menu-btn" id="mobileMenuBtn">
+                <i class="fas fa-bars"></i>
+            </button>
+            <nav>
+                <ul id="navMenu">
+                    <li><a href="#home">Home</a></li>
+                    <li><a href="#about">About</a></li>
+                    <li><a href="#experience">Experience</a></li>
+                    <li><a href="#skills">Skills</a></li>
+                    <li><a href="#projects">Projects</a></li>
+                    <li><a href="#certifications">Certifications</a></li>
+                    <li><a href="#contact">Contact</a></li>
+                </ul>
+            </nav>
+        </div>
+    </header>
+
+    <!-- Hero Section -->
+    <section id="home" class="hero">
+        <div class="container">
+            <div class="hero-content">
+                <div class="profile-container">
+                    <img src="https://images.unsplash.com/photo-1560250097-0b93528c311a?ixlib=rb-1.2.1&auto=format&fit=crop&w=500&q=80" alt="Civil Engineer Profile Photo" class="profile-photo">
+                    <h1>Alexandra Chen</h1>
+                    <div class="designation">Senior Civil Engineer</div>
+                    <div class="experience">12+ Years of Professional Experience</div>
+                </div>
+                <p>Specializing in infrastructure development, structural design, and project management for commercial, residential, and public works projects.</p>
+            </div>
+        </div>
+    </section>
+
+    <!-- Professional Summary -->
+    <section id="about" class="section-light">
+        <div class="container">
+            <h2>Professional Summary</h2>
+            <div class="summary-content">
+                <div class="summary-text">
+                    <p>Results-driven Civil Engineer with over 12 years of comprehensive experience in infrastructure planning, structural design, and construction management. Proven expertise in delivering large-scale commercial and residential projects from conception to completion.</p>
+                    <p>Specialized in sustainable construction practices, quality assurance, and regulatory compliance. Adept at leading multidisciplinary teams, managing budgets up to $50M, and implementing innovative engineering solutions to complex challenges.</p>
+                    <p>Committed to excellence in structural integrity, safety protocols, and timely project delivery while optimizing resource allocation and minimizing environmental impact.</p>
+                </div>
+                <div class="summary-image">
+                    <img src="https://images.unsplash.com/photo-1541888946425-d81bb19240f5?ixlib=rb-1.2.1&auto=format&fit=crop&w=600&q=80" alt="Construction Site">
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Experience -->
+    <section id="experience">
+        <div class="container">
+            <h2>Professional Experience</h2>
+            <div class="summary-text">
+                <p>Throughout my career, I've held key positions with leading construction and engineering firms, managing diverse projects across multiple sectors. My experience includes:</p>
+                <ul class="responsibilities">
+                    <li><strong>Project Leadership:</strong> Directed teams of 20+ engineers and technicians on complex infrastructure projects</li>
+                    <li><strong>Design Excellence:</strong> Developed and reviewed structural designs for high-rise buildings, bridges, and transportation systems</li>
+                    <li><strong>Budget Management:</strong> Controlled project budgets ranging from $5M to $75M, consistently delivering within financial constraints</li>
+                    <li><strong>Regulatory Compliance:</strong> Ensured adherence to building codes, safety standards, and environmental regulations</li>
+                    <li><strong>Client Relations:</strong> Maintained strong relationships with contractors, government agencies, and private clients</li>
+                </ul>
+            </div>
+        </div>
+    </section>
+
+    <!-- Projects -->
+    <section id="projects" class="section-light">
+        <div class="container">
+            <h2>Key Projects</h2>
+            <div class="projects-grid">
+                <!-- Project 1 -->
+                <div class="project-card">
+                    <div class="project-image">
+                        <img src="https://images.unsplash.com/photo-1545324418-cc1a3fa10c00?ixlib=rb-1.2.1&auto=format&fit=crop&w=600&q=80" alt="Skyline Towers Complex">
+                    </div>
+                    <div class="project-content">
+                        <h3>Skyline Towers Complex</h3>
+                        <div class="project-type">Commercial</div>
+                        <p><strong>Responsibilities:</strong></p>
+                        <ul class="responsibilities">
+                            <li>Structural design and analysis</li>
+                            <li>Construction oversight and quality control</li>
+                            <li>Coordination with architectural team</li>
+                            <li>Budget management and timeline adherence</li>
+                        </ul>
+                        <p class="outcome"><strong>Key Outcome:</strong> Completed 6 months ahead of schedule with 15% cost savings.</p>
+                    </div>
+                </div>
+
+                <!-- Project 2 -->
+                <div class="project-card">
+                    <div class="project-image">
+                        <img src="https://images.unsplash.com/photo-1581094794329-c8112a89af12?ixlib=rb-1.2.1&auto=format&fit=crop&w=600&q=80" alt="Riverfront Highway Expansion">
+                    </div>
+                    <div class="project-content">
+                        <h3>Riverfront Highway Expansion</h3>
+                        <div class="project-type">Infrastructure</div>
+                        <p><strong>Responsibilities:</strong></p>
+                        <ul class="responsibilities">
+                            <li>Geotechnical analysis and foundation design</li>
+                            <li>Traffic management planning</li>
+                            <li>Environmental impact assessment</li>
+                            <li>Contractor supervision and safety compliance</li>
+                        </ul>
+                        <p class="outcome"><strong>Key Outcome:</strong> Increased traffic capacity by 40% with improved safety features.</p>
+                    </div>
+                </div>
+
+                <!-- Project 3 -->
+                <div class="project-card">
+                    <div class="project-image">
+                        <img src="https://images.unsplash.com/photo-1568605114967-8130f3a36994?ixlib=rb-1.2.1&auto=format&fit=crop&w=600&q=80" alt="Green Valley Residential Development">
+                    </div>
+                    <div class="project-content">
+                        <h3>Green Valley Residential Development</h3>
+                        <div class="project-type">Residential</div>
+                        <p><strong>Responsibilities:</strong></p>
+                        <ul class="responsibilities">
+                            <li>Site planning and land development</li>
+                            <li>Utility infrastructure design</li>
+                            <li>Sustainable construction implementation</li>
+                            <li>Community compliance and approvals</li>
+                        </ul>
+                        <p class="outcome"><strong>Key Outcome:</strong> LEED Gold certification with 30% energy savings for residents.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Skills & Tools -->
+    <section id="skills">
+        <div class="container">
+            <h2>Technical Skills & Tools</h2>
+            <div class="skills-container">
+                <div class="skill-category">
+                    <h3>Technical Skills</h3>
+                    <ul class="skill-list">
+                        <li><i class="fas fa-drafting-compass"></i> Structural Design & Analysis</li>
+                        <li><i class="fas fa-calculator"></i> Estimation & Cost Control</li>
+                        <li><i class="fas fa-hard-hat"></i> Site Management & Supervision</li>
+                        <li><i class="fas fa-clipboard-check"></i> Quality Assurance & Control</li>
+                        <li><i class="fas fa-project-diagram"></i> Project Planning & Scheduling</li>
+                        <li><i class="fas fa-truck-moving"></i> Geotechnical Engineering</li>
+                    </ul>
+                </div>
+                
+                <div class="skill-category">
+                    <h3>Software & Tools</h3>
+                    <ul class="skill-list">
+                        <li><i class="fas fa-cube"></i> STAAD.Pro</li>
+                        <li><i class="fas fa-building"></i> ETABS</li>
+                        <li><i class="fas fa-drafting-compass"></i> AutoCAD</li>
+                        <li><i class="fas fa-chart-line"></i> Primavera P6</li>
+                        <li><i class="fas fa-ruler-combined"></i> Revit</li>
+                        <li><i class="fas fa-map"></i> ArcGIS</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Certifications -->
+    <section id="certifications" class="section-dark">
+        <div class="container">
+            <h2>Certifications & Licenses</h2>
+            <ul class="certifications-list">
+                <li><i class="fas fa-certificate"></i> Professional Engineer (P.E.) License</li>
+                <li><i class="fas fa-certificate"></i> LEED Accredited Professional (BD+C)</li>
+                <li><i class="fas fa-certificate"></i> Project Management Professional (PMP)</li>
+                <li><i class="fas fa-certificate"></i> OSHA 30-Hour Construction Safety</li>
+                <li><i class="fas fa-certificate"></i> Certified Construction Manager (CCM)</li>
+                <li><i class="fas fa-certificate"></i> Structural Engineering Certification</li>
+            </ul>
+        </div>
+    </section>
+
+    <!-- Contact -->
+    <section id="contact" class="section-light">
+        <div class="container">
+            <h2>Contact Details</h2>
+            <div class="contact-container">
+                <div class="contact-info">
+                    <h3>Get In Touch</h3>
+                    <p><i class="fas fa-envelope"></i> alex.chen@civilportfolio.com</p>
+                    <p><i class="fas fa-phone"></i> +1 (555) 123-4567</p>
+                    <p><i class="fas fa-map-marker-alt"></i> 123 Engineering Ave, Suite 500<br>San Francisco, CA 94107</p>
+                    <p><i class="fas fa-clock"></i> Available: Mon-Fri, 9am-5pm PST</p>
+                </div>
+                
+                <div class="contact-info">
+                    <h3>Languages</h3>
+                    <p><i class="fas fa-language"></i> English (Native)</p>
+                    <p><i class="fas fa-language"></i> Spanish (Professional Proficiency)</p>
+                    <p><i class="fas fa-language"></i> Mandarin (Conversational)</p>
+                    <p><i class="fas fa-globe"></i> Available for local and international projects</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer>
+        <div class="container">
+            <div class="footer-content">
+                <div class="logo">Civil<span>Portfolio</span></div>
+                <p>Professional Civil Engineering Services</p>
+                <div class="copyright">
+                    &copy; 2023 Alexandra Chen, P.E. All rights reserved.
+                </div>
+            </div>
+        </div>
+    </footer>
+
+    <script>
+        // Mobile menu toggle
+        const mobileMenuBtn = document.getElementById('mobileMenuBtn');
+        const navMenu = document.getElementById('navMenu');
+        
+        mobileMenuBtn.addEventListener('click', () => {
+            navMenu.classList.toggle('active');
+            
+            // Change icon based on menu state
+            const icon = mobileMenuBtn.querySelector('i');
+            if (navMenu.classList.contains('active')) {
+                icon.classList.remove('fa-bars');
+                icon.classList.add('fa-times');
+            } else {
+                icon.classList.remove('fa-times');
+                icon.classList.add('fa-bars');
+            }
+        });
+        
+        // Close mobile menu when clicking on a link
+        document.querySelectorAll('nav ul li a').forEach(link => {
+            link.addEventListener('click', () => {
+                navMenu.classList.remove('active');
+                const icon = mobileMenuBtn.querySelector('i');
+                icon.classList.remove('fa-times');
+                icon.classList.add('fa-bars');
+            });
+        });
+        
+        // Smooth scrolling for anchor links
+        document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+            anchor.addEventListener('click', function(e) {
+                e.preventDefault();
+                
+                const targetId = this.getAttribute('href');
+                if (targetId === '#') return;
+                
+                const targetElement = document.querySelector(targetId);
+                if (targetElement) {
+                    window.scrollTo({
+                        top: targetElement.offsetTop - 70,
+                        behavior: 'smooth'
+                    });
+                }
+            });
+        });
+        
+        // Header background on scroll
+        window.addEventListener('scroll', () => {
+            const header = document.querySelector('header');
+            if (window.scrollY > 50) {
+                header.style.boxShadow = '0 4px 12px rgba(0, 0, 0, 0.15)';
+            } else {
+                header.style.boxShadow = '0 4px 12px rgba(0, 0, 0, 0.08)';
+            }
+        });
+    </script>
+</body>
+</html>

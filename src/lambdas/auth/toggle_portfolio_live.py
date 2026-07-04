@@ -14,7 +14,9 @@ from datetime import datetime, timezone
 from urllib.parse import unquote
 
 dynamodb = boto3.resource('dynamodb')
+cf_client = boto3.client('cloudfront')
 DYNAMODB_TABLE = os.environ.get('DYNAMODB_TABLE')
+CLOUDFRONT_DISTRIBUTION_ID = os.environ.get('CLOUDFRONT_DISTRIBUTION_ID', '')
 
 
 def _log(level: str, message: str, **kwargs) -> None:
@@ -82,6 +84,20 @@ def lambda_handler(event, context):
                 ':now': datetime.now(timezone.utc).isoformat(),
             },
         )
+
+        # Invalidate CDN cache so Lambda@Edge re-checks access on next request.
+        if CLOUDFRONT_DISTRIBUTION_ID:
+            try:
+                cf_client.create_invalidation(
+                    DistributionId=CLOUDFRONT_DISTRIBUTION_ID,
+                    InvalidationBatch={
+                        'Paths': {'Quantity': 1, 'Items': [f'/{path_user_id}/{upload_id}/*']},
+                        'CallerReference': correlation_id,
+                    },
+                )
+            except Exception as cf_err:
+                _log('ERROR', 'CloudFront invalidation failed (non-fatal)',
+                     correlationId=correlation_id, error=str(cf_err))
 
         _log('INFO', 'Portfolio live toggled',
              correlationId=correlation_id, userId=path_user_id,

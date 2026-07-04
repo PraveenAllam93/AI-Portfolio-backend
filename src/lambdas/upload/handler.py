@@ -40,8 +40,12 @@ DYNAMODB_TABLE = os.environ.get('DYNAMODB_TABLE')
 # Maximum concurrent pending/active uploads per user (abuse protection)
 MAX_ACTIVE_UPLOADS = int(os.environ.get('MAX_ACTIVE_UPLOADS', 5))
 
-ALLOWED_CATEGORIES = {'software_engineer', 'designer', 'marketing', 'finance'}
-ALLOWED_TEMPLATES = {'minimal', 'modern', 'bold', 'creative', 'aurora', 'nebula', 'luxury', 'executive', 'galaxy', 'codex', 'neon', 'circuit', 'navy-gold', 'cosmos', 'retro', 'luxe', 'quantum'}
+# Sentinel stored when category/templateId are deferred until the user confirms
+# the (auto-detected) profession after upload. start_generation overwrites these.
+_PENDING = 'pending'
+
+ALLOWED_CATEGORIES = {'software_engineer', 'designer', 'marketing', 'finance', 'civil_engineer', 'mechanical_engineer'}
+ALLOWED_TEMPLATES = {'minimal', 'modern', 'bold', 'creative', 'aurora', 'nebula', 'luxury', 'executive', 'codex', 'neon', 'circuit', 'glitch', 'navy-gold', 'cosmos', 'retro', 'luxe', 'quantum', 'designer', 'designer-2', 'marketing', 'structura', 'blueprint', 'precision'}
 
 # Safe filename: block path separators, null bytes, and Windows reserved chars.
 # Allowlist approach was too strict (rejected spaces in names like "resume 1.pdf").
@@ -86,8 +90,13 @@ def lambda_handler(event, context):
         body = json.loads(event.get('body') or '{}')
         filename = body.get('filename', '')
         content_type = body.get('contentType', '')
-        category = body.get('category', '')
-        template_id = body.get('templateId', 'minimal')
+        # category / templateId are DEFERRED in the new flow: the resume is
+        # uploaded first, the pipeline extracts text + classifies the profession,
+        # then the user confirms the profession/template and the start-generation
+        # Lambda writes the real values. If the client omits them we store the
+        # PENDING sentinel and skip their validation here.
+        category = body.get('category', '') or _PENDING
+        template_id = body.get('templateId', '') or _PENDING
 
         _log_info(
             "Presigned URL requested",
@@ -138,8 +147,8 @@ def lambda_handler(event, context):
                 'allowed': ALLOWED_MIME_TYPES,
             })
 
-        # --- Validation 4: category ---
-        if category not in ALLOWED_CATEGORIES:
+        # --- Validation 4: category (only if provided; deferred otherwise) ---
+        if category != _PENDING and category not in ALLOWED_CATEGORIES:
             _log_warning(
                 "Invalid category rejected",
                 correlationId=correlation_id,
@@ -151,8 +160,8 @@ def lambda_handler(event, context):
                 'allowed': sorted(ALLOWED_CATEGORIES),
             })
 
-        # --- Validation 5: templateId ---
-        if template_id not in ALLOWED_TEMPLATES:
+        # --- Validation 5: templateId (only if provided; deferred otherwise) ---
+        if template_id != _PENDING and template_id not in ALLOWED_TEMPLATES:
             _log_warning(
                 "Invalid templateId rejected",
                 correlationId=correlation_id,
@@ -252,7 +261,8 @@ def _active_upload_count(user_id: str) -> int:
     """
     in_flight = {
         'PENDING_UPLOAD', 'VALIDATING', 'VALIDATED',
-        'EXTRACTING_TEXT', 'QUEUED_FOR_AI', 'AI_PROCESSING', 'GENERATING',
+        'EXTRACTING_TEXT', 'AWAITING_SELECTION', 'QUEUED_FOR_AI',
+        'AI_PROCESSING', 'GENERATING',
     }
     table = dynamodb.Table(DYNAMODB_TABLE)
     count = 0

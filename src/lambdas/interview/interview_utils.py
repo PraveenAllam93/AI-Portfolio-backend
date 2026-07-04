@@ -143,12 +143,56 @@ def _parse_json_response(raw: str) -> dict:
 # User profile extraction
 # ---------------------------------------------------------------------------
 
-def get_user_profile(user_id: str) -> dict | None:
+def _coerce_parsed_data(parsed) -> dict | None:
     """
-    Return parsedData from the user's most recent COMPLETE upload.
-    Returns None if no completed upload exists.
+    parsedData is stored as a JSON string on UPLOAD# records and as a native
+    Map on PORTFOLIO# records. Normalise both into a plain dict.
+    """
+    if isinstance(parsed, dict):
+        return _from_dynamodb(parsed)
+    if isinstance(parsed, str):
+        try:
+            return json.loads(parsed)
+        except Exception:
+            return None
+    return None
+
+
+def get_user_profile(user_id: str, upload_id: str | None = None) -> dict | None:
+    """
+    Return parsedData for the user's resume/portfolio.
+
+    When `upload_id` is provided, return parsedData for that specific portfolio
+    (the one the user selected on the interview setup screen). Falls back to the
+    UPLOAD# record if the PORTFOLIO# record carries no parsedData.
+
+    When `upload_id` is None, return parsedData from the most recent COMPLETE
+    upload (legacy default — used when the user has a single portfolio).
+
+    Keying is always scoped to USER#{user_id}, so a caller cannot read another
+    user's data by passing a foreign upload_id (it simply resolves to None).
+
+    Returns None if no usable parsedData is found.
     """
     table = dynamodb.Table(DYNAMODB_TABLE)
+
+    if upload_id:
+        # Prefer the PORTFOLIO# record — it reflects the user's edits and is the
+        # exact item surfaced in the portfolio selector.
+        resp = table.get_item(Key={'PK': f'USER#{user_id}', 'SK': f'PORTFOLIO#{upload_id}'})
+        item = resp.get('Item')
+        if item and item.get('parsedData'):
+            profile = _coerce_parsed_data(item['parsedData'])
+            if profile:
+                return profile
+
+        # Fall back to the raw upload record.
+        resp = table.get_item(Key={'PK': f'USER#{user_id}', 'SK': f'UPLOAD#{upload_id}'})
+        item = resp.get('Item')
+        if item and item.get('status') == 'COMPLETE' and item.get('parsedData'):
+            return _coerce_parsed_data(item['parsedData'])
+        return None
+
     resp = table.query(
         KeyConditionExpression=(
             Key('PK').eq(f'USER#{user_id}') & Key('SK').begins_with('UPLOAD#')
@@ -159,10 +203,9 @@ def get_user_profile(user_id: str) -> dict | None:
     )
     for item in resp.get('Items', []):
         if item.get('status') == 'COMPLETE' and item.get('parsedData'):
-            try:
-                return json.loads(item['parsedData'])
-            except Exception:
-                continue
+            profile = _coerce_parsed_data(item['parsedData'])
+            if profile:
+                return profile
     return None
 
 

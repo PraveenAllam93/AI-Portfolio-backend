@@ -102,7 +102,7 @@ def lambda_handler(event, context):
             # reuse the parsed data instead of calling OpenAI again.
             parsed_data, portfolio_content = None, {}
             if content_hash:
-                parsed_data, portfolio_content = _get_cached_result(content_hash, correlation_id)
+                parsed_data, portfolio_content = _get_cached_result(content_hash, category, correlation_id)
 
             if parsed_data:
                 _log_info(
@@ -155,11 +155,19 @@ def lambda_handler(event, context):
                     })
                     continue
 
-                # Cache result by content hash to deduplicate future uploads.
+                # Cache result by content hash + category to deduplicate future
+                # uploads of the SAME resume UNDER THE SAME profession.
                 if content_hash:
                     _save_cached_result(
-                        user_id, content_hash, parsed_data, portfolio_content, correlation_id
+                        user_id, content_hash, category, parsed_data, portfolio_content, correlation_id
                     )
+
+            # Safety net: strip any top-level keys that don't belong to this
+            # category's schema. Protects against (a) a stale cross-profession
+            # cache entry and (b) the LLM hallucinating extra sections, either of
+            # which would otherwise leak foreign sections (e.g. campaigns,
+            # financial_modeling) into the portfolio and edit page.
+            parsed_data = _strip_foreign_keys(parsed_data, category, correlation_id)
 
             _update_status(user_id, upload_id, 'AI_COMPLETE', {
                 'parsedData': json.dumps(parsed_data),
@@ -288,14 +296,21 @@ def _verify_is_resume(resume_text: str, api_key: str, correlation_id: str) -> bo
         return True  # Fail open — don't block if we can't verify
 
 
-def _get_cached_result(content_hash: str, correlation_id: str) -> tuple[dict | None, dict]:
-    """Fetch previously parsed data by content hash. Returns (None, {}) on miss."""
+def _get_cached_result(content_hash: str, category: str, correlation_id: str) -> tuple[dict | None, dict]:
+    """Fetch previously parsed data by content hash + category.
+
+    The cache is keyed by BOTH the resume content hash and the profession
+    category. The same resume parsed as e.g. 'finance' produces a different
+    schema (financial_modeling, investment_portfolios) than 'software_engineer'
+    (projects, tech_stack). Keying on hash alone would serve a finance parse
+    back into a software-engineer portfolio. Returns (None, {}) on miss.
+    """
     try:
         table = dynamodb.Table(DYNAMODB_TABLE)
         resp = table.get_item(
             Key={
                 'PK': f'CONTENT#{content_hash}',
-                'SK': 'PARSED',
+                'SK': f'PARSED#{category}',
             },
             ProjectionExpression='parsedData, portfolioContent',
         )
@@ -321,16 +336,18 @@ def _get_cached_result(content_hash: str, correlation_id: str) -> tuple[dict | N
 def _save_cached_result(
     user_id: str,
     content_hash: str,
+    category: str,
     parsed_data: dict,
     portfolio_content: dict,
     correlation_id: str,
 ) -> None:
-    """Persist parsed result keyed by content hash for future dedup hits."""
+    """Persist parsed result keyed by content hash + category for future dedup hits."""
     try:
         table = dynamodb.Table(DYNAMODB_TABLE)
         table.put_item(Item={
             'PK': f'CONTENT#{content_hash}',
-            'SK': 'PARSED',
+            'SK': f'PARSED#{category}',
+            'category': category,
             'parsedBy': user_id,
             'parsedData': json.dumps(parsed_data),
             'portfolioContent': json.dumps(portfolio_content),
@@ -342,6 +359,46 @@ def _save_cached_result(
             correlationId=correlation_id,
             error=str(e),
         )
+
+
+def _allowed_keys_for_category(category: str) -> set:
+    """Top-level field names belonging to a category's parse schema."""
+    from resume_models import get_category_config
+    model = get_category_config(category)['model']
+    # Pydantic v2 model fields == the exact top-level keys the LLM is asked for.
+    return set(model.model_fields.keys())
+
+
+def _strip_foreign_keys(parsed_data, category: str, correlation_id: str):
+    """Remove top-level keys not defined by this category's schema.
+
+    Defends the portfolio against foreign sections leaking in from a stale
+    cross-profession cache entry or an LLM that returned extra keys. Only
+    top-level keys are filtered; nested content is left untouched.
+    """
+    if not isinstance(parsed_data, dict):
+        return parsed_data
+    try:
+        allowed = _allowed_keys_for_category(category)
+    except Exception as e:
+        # If we can't resolve the schema, don't risk dropping valid data.
+        _log_error(
+            "Could not resolve category schema — skipping foreign-key strip",
+            correlationId=correlation_id,
+            category=category,
+            error=str(e),
+        )
+        return parsed_data
+    removed = [k for k in parsed_data if k not in allowed]
+    if removed:
+        _log_info(
+            "Stripped foreign-category keys from parsed data",
+            correlationId=correlation_id,
+            category=category,
+            removedKeys=removed,
+        )
+        parsed_data = {k: v for k, v in parsed_data.items() if k in allowed}
+    return parsed_data
 
 
 def _process_resume_with_openai(
@@ -474,7 +531,7 @@ def _trigger_portfolio_generation(
         'parsedData': parsed_data,
         'portfolioContent': portfolio_content,
         'version': 0,
-        'isLive': False,
+        'isLive': True,
         'createdAt': datetime.now(timezone.utc).isoformat(),
         'status': 'GENERATING',
     })

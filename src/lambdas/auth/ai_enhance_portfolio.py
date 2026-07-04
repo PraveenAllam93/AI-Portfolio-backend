@@ -85,6 +85,8 @@ _SKILLS_CONTEXT_SECTIONS: dict = {
     'designer':          ['experience', 'projects', 'awards', 'certifications'],
     'marketing':         ['experience', 'campaigns', 'certifications'],
     'finance':           ['experience', 'financial_modeling', 'investment_portfolios', 'certifications'],
+    'civil_engineer':       ['experience', 'projects', 'certifications'],
+    'mechanical_engineer':  ['experience', 'projects', 'certifications'],
 }
 _SKILLS_CONTEXT_DEFAULT = ['experience', 'certifications']
 
@@ -618,8 +620,12 @@ _SUGGESTIONS_SCHEMA = (
     'Make it specific to the actual content. Keep it under 200 characters.\n'
     '  "priority": "high" (empty or very weak), "medium" (present but improvable), or "low" (minor polish)\n\n'
     'Rules:\n'
-    '- Return 3–8 suggestions total\n'
-    '- Do not suggest improvements for fields that are already strong and detailed\n'
+    '- Return UP TO 8 suggestions. Quality over quantity: include a suggestion ONLY '
+    'when it is a genuine, concrete improvement. If the portfolio is already strong, '
+    'it is correct to return FEWER — even an empty array []. NEVER invent filler or '
+    'repeat a near-identical suggestion just to reach a count.\n'
+    '- Do not suggest changing a field that is already clear, specific, and complete. '
+    'Do not suggest rewording text that is already good just to produce output.\n'
     '- Do not return more than 2 suggestions for the same section item\n'
     '- NEVER use a field name that is not in the allowed list above\n'
     '- The "id" must match the pattern "<section>-<index>-<field>" exactly\n'
@@ -659,10 +665,22 @@ def _build_portfolio_summary(parsed_data, portfolio_content):
     parts.append(f"Headline: {profile.get('headline', '(missing)')}")
     parts.append(f"Email: {profile.get('email', '(missing)')}")
     parts.append(f"Profile image: {'yes' if profile.get('profile_image') else 'no'}")
-    bio = (portfolio_content or {}).get('bio', '').strip()
-    uv = (portfolio_content or {}).get('uniqueValue', '').strip()
+    bio = ((portfolio_content or {}).get('bio') or '').strip()
+    uv = ((portfolio_content or {}).get('uniqueValue') or '').strip()
     parts.append(f"Bio: {bio[:600] if bio else '(empty)'}")
     parts.append(f"Unique value: {uv[:400] if uv else '(empty)'}")
+
+    # Skills go right after profile so the FULL list is always within the prompt's
+    # character budget. If placed later, long experience/projects can push it past
+    # the summary[:N] cutoff, hiding skills from the model and causing false
+    # "add a skill you already have" suggestions from the cross-reference rule.
+    skills = parsed_data.get('skills') or []
+    parts.append(f"\n=== SKILLS ({len(skills)} groups) ===")
+    for g in skills:
+        cat = g.get('category', '')
+        sk = g.get('skills') or []
+        skill_names = ', '.join(str(s) for s in sk) if isinstance(sk, list) else ''
+        parts.append(f"  {cat}: {skill_names if skill_names else '(empty)'}")
 
     for i, exp in enumerate((parsed_data.get('experience') or [])[:6]):
         parts.append(f"\n=== EXPERIENCE {i} ===")
@@ -688,18 +706,53 @@ def _build_portfolio_summary(parsed_data, portfolio_content):
         parts.append(f"Measurable outcomes ({len(out) if isinstance(out, list) else 0}):")
         parts.append(_fmt_list(out))
 
-    skills = parsed_data.get('skills') or []
-    parts.append(f"\n=== SKILLS ({len(skills)} groups) ===")
-    for g in skills:
-        cat = g.get('category', '')
-        sk = g.get('skills') or []
-        skill_names = ', '.join(str(s) for s in sk) if isinstance(sk, list) else ''
-        parts.append(f"  {cat}: {skill_names if skill_names else '(empty)'}")
+    campaigns = parsed_data.get('campaigns') or []
+    if campaigns:
+        parts.append(f"\n=== CAMPAIGNS ({len(campaigns)} entries) ===")
+        for i, c in enumerate(campaigns[:6]):
+            parts.append(f"  [{i}] {c.get('campaign_name', '')} ({c.get('campaign_type', '')})")
+            budget = c.get('budget', '')
+            if budget:
+                parts.append(f"      Budget: {budget}")
+            channels = c.get('channels_used') or []
+            if channels:
+                parts.append(f"      Channels: {', '.join(str(ch) for ch in channels)}")
+            metrics = c.get('performance_metrics') or []
+            parts.append(f"      Performance metrics ({len(metrics) if isinstance(metrics, list) else 0}):")
+            parts.append(_fmt_list(metrics))
+
+    awards = parsed_data.get('awards') or []
+    if awards:
+        parts.append(f"\n=== AWARDS ({len(awards)} entries) ===")
+        for i, a in enumerate(awards[:5]):
+            parts.append(f"  [{i}] {a.get('title', '')} — {a.get('awarding_body', '')} ({a.get('year', '')})")
+
+    design_philosophy = (parsed_data.get('design_philosophy') or '').strip()
+    if design_philosophy:
+        parts.append(f"\n=== DESIGN PHILOSOPHY ===")
+        parts.append(design_philosophy[:400])
+
+    software_proficiency = parsed_data.get('software_proficiency') or []
+    if software_proficiency:
+        parts.append(f"\n=== SOFTWARE PROFICIENCY ===")
+        parts.append(', '.join(str(s) for s in software_proficiency[:20]))
+
+    financial_modeling = parsed_data.get('financial_modeling') or []
+    if financial_modeling:
+        parts.append(f"\n=== FINANCIAL MODELING ({len(financial_modeling)} entries) ===")
+        for i, fm in enumerate(financial_modeling[:4]):
+            parts.append(f"  [{i}] {fm.get('model_type', '')} — {str(fm.get('outcome', ''))[:200]}")
+
+    investment_portfolios = parsed_data.get('investment_portfolios') or []
+    if investment_portfolios:
+        parts.append(f"\n=== INVESTMENT PORTFOLIOS ({len(investment_portfolios)} entries) ===")
+        for i, ip in enumerate(investment_portfolios[:4]):
+            parts.append(f"  [{i}] {ip.get('portfolio_type', '')} — AUM: {ip.get('assets_under_management', '')}")
 
     ach = parsed_data.get('achievements') or []
     parts.append(f"\n=== ACHIEVEMENTS ({len(ach)} entries) ===")
     for i, a in enumerate(ach[:5]):
-        parts.append(f"  [{i}] {a.get('title', '')} — {a.get('description', '')[:200]}")
+        parts.append(f"  [{i}] {a.get('title', '')} — {(a.get('description') or '')[:200]}")
 
     edu = parsed_data.get('education') or []
     parts.append(f"\n=== EDUCATION ({len(edu)} entries) ===")
@@ -733,10 +786,86 @@ _CATEGORY_GUIDANCE = {
         "(outcome), investment_portfolios, skills (financial tools, models), certifications, and achievements. "
         "Do NOT suggest software projects or marketing campaigns."
     ),
+    'civil_engineer': (
+        "This is a CIVIL ENGINEER portfolio. Focus suggestions on: experience (description, key_points), "
+        "projects (description, responsibilities, measurable_outcomes — structural design, site management, "
+        "infrastructure), skills (structural analysis, estimation, QA/QC, software like STAAD/ETABS/AutoCAD), "
+        "certifications, and achievements. Do NOT suggest campaigns, financial modeling, or design-specific fields."
+    ),
+    'mechanical_engineer': (
+        "This is a MECHANICAL ENGINEER portfolio. Focus suggestions on: experience (description, key_points), "
+        "projects (description, responsibilities, measurable_outcomes — product/thermal design, manufacturing, "
+        "simulation), skills (CAD/CAE tools like SolidWorks/CATIA/ANSYS, thermal systems, manufacturing processes), "
+        "certifications, and achievements. Do NOT suggest campaigns, financial modeling, or design-specific fields."
+    ),
 }
 _CATEGORY_GUIDANCE_DEFAULT = (
     "Focus suggestions on experience, projects/work, skills, and achievements that are present in the data."
 )
+
+
+def _filter_valid_suggestions(suggestions, parsed_data, suppressed=None):
+    """Keep only suggestions the frontend can actually render AND apply.
+
+    The frontend routes each card by section (see activateSuggestion in the edit
+    page): profile needs a valid profileKey, skills needs only an instruction, and
+    item sections need an in-range integer index plus an AI-enhanceable field.
+    Anything else is dropped here so the panel never shows a card that does nothing
+    (profile/skills with no target) or that 400s at the enhancer (a hallucinated or
+    non-enhanceable field). The index is normalized to a real int so the frontend's
+    array slicing never receives a string.
+
+    `suppressed` is the set of already-addressed target keys (see point 2). Any card
+    whose canonical key is in this set is dropped here as a guarantee, even if the
+    model ignored the prompt instruction to skip it.
+    """
+    suppressed = set(suppressed or [])
+    valid = []
+    for s in suggestions:
+        if not isinstance(s, dict):
+            continue
+        section = s.get('section')
+        instruction = s.get('instruction')
+        if not section or not isinstance(instruction, str) or not instruction.strip():
+            continue
+
+        if section == 'profile':
+            # profileKey is the only routing target for profile cards
+            if s.get('profileKey') not in _ALLOWED_FIELDS:
+                continue
+            if f"profile:{s.get('profileKey')}" in suppressed:
+                continue
+            valid.append(s)
+            continue
+
+        if section == 'skills':
+            # skills cards carry only an instruction; no index/field needed
+            if 'skills' in suppressed:
+                continue
+            valid.append(s)
+            continue
+
+        # Item sections: must target a field the enhancer will actually accept
+        allowed_fields = _ENHANCEABLE_FIELDS.get(section)
+        if not allowed_fields or s.get('field') not in allowed_fields:
+            continue
+
+        # Index must be a real, in-range integer for parsed_data[section]
+        try:
+            index = int(s.get('index'))
+        except (TypeError, ValueError):
+            continue
+        section_items = parsed_data.get(section)
+        if not isinstance(section_items, list) or index < 0 or index >= len(section_items):
+            continue
+
+        if f"{section}:{index}:{s.get('field')}" in suppressed:
+            continue
+
+        s['index'] = index  # normalize ("0" / 0.0 -> 0) before returning to frontend
+        valid.append(s)
+
+    return valid
 
 
 def _handle_analyze_and_suggest(body, path_user_id, upload_id, correlation_id):
@@ -775,14 +904,52 @@ def _handle_analyze_and_suggest(body, path_user_id, upload_id, correlation_id):
     profession_guidance = _CATEGORY_GUIDANCE.get(category, _CATEGORY_GUIDANCE_DEFAULT)
     summary = _build_portfolio_summary(parsed_data, portfolio_content)
 
+    # Authoritative, de-duplicated list of skills the user ALREADY has. Passed
+    # explicitly into the cross-reference rule so the model never suggests adding
+    # a skill that is already present (case-insensitive anchor, independent of where
+    # the skills block lands in the truncated summary).
+    existing_skills = []
+    _seen_skills = set()
+    for _g in (parsed_data.get('skills') or []):
+        for _s in (_g.get('skills') or []):
+            _key = str(_s).strip().lower()
+            if _key and _key not in _seen_skills:
+                _seen_skills.add(_key)
+                existing_skills.append(str(_s).strip())
+    existing_skills_line = ', '.join(existing_skills) if existing_skills else '(none listed)'
+
+    # Point 2: targets the user has already accepted/dismissed and not changed since.
+    # The frontend computes these from a content signature, so they only appear here
+    # while the underlying content is unchanged. Format: "<section>:<index>" for items,
+    # "profile:<key>" for profile fields, "skills" for the skills section.
+    suppressed = body.get('suppressed') or []
+    if not isinstance(suppressed, list):
+        suppressed = []
+    suppressed = [str(x) for x in suppressed if isinstance(x, (str, int))][:200]
+    if suppressed:
+        suppressed_block = (
+            f"ALREADY ADDRESSED — the user has already accepted or dismissed a suggestion "
+            f"for each target below and has NOT changed it since. Do NOT return ANY "
+            f"suggestion for these (skip them entirely):\n   {', '.join(suppressed)}\n"
+            f"Identifier format: \"<section>:<index>:<field>\" for items, \"profile:<key>\" "
+            f"for profile fields, \"skills\" for the skills section.\n\n"
+        )
+    else:
+        suppressed_block = ''
+
     prompt = (
         f"Here is the user's complete portfolio data:\n\n"
         f"{summary[:6000]}\n\n"
         f"PROFESSION CONTEXT: {profession_guidance}\n\n"
+        f"{suppressed_block}"
         f"Analysis instructions:\n"
-        f"1. CROSS-REFERENCE sections: Look for technologies, tools, frameworks, or skills that appear "
-        f"in experience descriptions or project tech stacks / descriptions but are NOT listed in the "
-        f"skills section. Suggest adding them to skills.\n"
+        f"1. CROSS-REFERENCE sections: The user's CURRENT skills (authoritative, complete list) are:\n"
+        f"   {existing_skills_line}\n"
+        f"   Look for technologies, tools, or frameworks mentioned in experience descriptions or project "
+        f"tech stacks / descriptions that are NOT already in the list above. Compare case-insensitively and "
+        f"treat obvious variants as the SAME skill (e.g. 'JS'='JavaScript', 'React.js'='React', "
+        f"'Node'='Node.js', 'Postgres'='PostgreSQL'). Only suggest adding a skill if it is genuinely "
+        f"missing from the list above. NEVER suggest adding a skill that is already listed.\n"
         f"2. PER-ITEM COMPLETENESS: For each experience item, check if description AND key_points are "
         f"both present and substantive. For each project item, check if description, responsibilities, "
         f"AND measurable_outcomes are all present and non-empty. Suggest the specific missing or weak field.\n"
@@ -792,7 +959,15 @@ def _handle_analyze_and_suggest(body, path_user_id, upload_id, correlation_id):
         f"4. PROFILE QUALITY: If bio is generic or short, or uniqueValue is weak, suggest improvements.\n"
         f"5. FIELD VARIETY: For any single section item, do NOT suggest the same improvement theme "
         f"(e.g., 'add metrics') for multiple different fields. Each field has a distinct purpose — "
-        f"pick only the weakest or most missing field for each item.\n\n"
+        f"pick only the weakest or most missing field for each item.\n"
+        f"6. SPELLING & GRAMMAR: Read the actual text of bio, uniqueValue, and every description, "
+        f"key_points, responsibilities, measurable_outcomes, outcome, and performance_metrics. "
+        f"If any contains a clear spelling mistake, grammatical error, or awkward/unprofessional "
+        f"phrasing, flag that specific field. A grammar/spelling fix is valid EVEN for an otherwise "
+        f"strong, complete field — but ONLY when a real error genuinely exists; never invent one. "
+        f"For these, set sublabel to name the issue (e.g. \"Fixes a spelling error in 'recieved'\") "
+        f"and make the instruction say to correct spelling and grammar WITHOUT changing the meaning "
+        f"or adding new claims. Use priority \"low\" unless the error is glaring.\n\n"
         f"{_SUGGESTIONS_SCHEMA}"
     )
 
@@ -801,25 +976,40 @@ def _handle_analyze_and_suggest(body, path_user_id, upload_id, correlation_id):
         raw = _call_openai(prompt, api_key, max_tokens=1500)
 
         clean = raw.strip()
+        # Strip markdown code fences if present
         if clean.startswith('```'):
             lines = clean.split('\n')
             clean = '\n'.join(lines[1:-1] if lines[-1].strip() == '```' else lines[1:])
+        # Sometimes LLM wraps the array in an outer object {"suggestions": [...]}
+        if clean.startswith('{'):
+            try:
+                wrapped = json.loads(clean)
+                if isinstance(wrapped.get('suggestions'), list):
+                    clean = json.dumps(wrapped['suggestions'])
+            except Exception:
+                pass
 
         suggestions = json.loads(clean)
         if not isinstance(suggestions, list):
             raise ValueError('Expected JSON array')
 
+        # Keep only suggestions the frontend can render and the enhancer will accept,
+        # and drop any target the user already addressed (point 2 guarantee).
+        valid = _filter_valid_suggestions(suggestions, parsed_data, suppressed)
+
         _log('INFO', 'analyze_and_suggest complete',
              correlationId=correlation_id, userId=path_user_id,
-             count=len(suggestions))
+             count=len(valid))
 
-        return _response(200, {'suggestions': suggestions})
+        return _response(200, {'suggestions': valid})
 
     except (json.JSONDecodeError, ValueError) as parse_err:
+        # LLM returned malformed JSON — return empty list so the UI doesn't break.
+        # The static fallback checklist is still shown to the user.
         _log('ERROR', 'analyze_and_suggest parse error',
              correlationId=correlation_id, userId=path_user_id, error=str(parse_err))
-        return _response(500, {'error': 'AI returned invalid format. Please try again.'})
+        return _response(200, {'suggestions': []})
     except Exception as e:
         _log('ERROR', 'analyze_and_suggest error',
              correlationId=correlation_id, userId=path_user_id, error=str(e))
-        return _response(500, {'error': 'Internal server error'})
+        return _response(500, {'error': str(e)})

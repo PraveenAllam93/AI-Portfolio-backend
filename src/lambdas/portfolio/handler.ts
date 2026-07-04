@@ -151,6 +151,7 @@ export async function lambdaHandler(event: LambdaEvent, context: LambdaContext):
 				? [...rawSectionOrder, 'custom_sections']
 				: rawSectionOrder;
 		const hiddenSections = (item.hiddenSections as string[] | undefined) ?? [];
+		const templateOverrides = (item.templateOverrides as Record<string, number> | undefined) ?? {};
 		const target = event.target ?? 'publish';
 		// Increment version counter for each new publish so versions never overwrite each other.
 		// Draft target always uses the fixed /draft path and does not bump the counter.
@@ -167,6 +168,7 @@ export async function lambdaHandler(event: LambdaEvent, context: LambdaContext):
 			category,
 			sectionOrder,
 			hiddenSections,
+			templateOverrides,
 			true // publishMode — strips editor JS + editable attrs, injects CSP
 		);
 
@@ -209,7 +211,7 @@ export async function lambdaHandler(event: LambdaEvent, context: LambdaContext):
 					TableName: DYNAMODB_TABLE,
 					Key: marshall({ PK: `USER#${userId}`, SK: `PORTFOLIO#${uploadId}` }),
 					UpdateExpression:
-						'SET #status = :status, portfolioPath = :path, updatedAt = :updatedAt, #version = :version, activeVersion = :activeVersion',
+						'SET #status = :status, portfolioPath = :path, updatedAt = :updatedAt, lastPublishedAt = :updatedAt, #version = :version, activeVersion = :activeVersion',
 					ExpressionAttributeNames: { '#status': 'status', '#version': 'version' },
 					ExpressionAttributeValues: marshall({
 						':status': 'PUBLISHED',

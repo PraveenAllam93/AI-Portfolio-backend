@@ -2,8 +2,9 @@
 name: add-portfolio-template
 description: >
   Implements a complete new portfolio template for the AI Portfolio Platform end-to-end —
-  from a design input (screenshots or HTML) all the way through backend Python rendering,
-  frontend JS preview, upload wizard registration, and edit-page inline editing with
+  from a design input (screenshots or HTML) all the way through a single unified TypeScript
+  template (shared by the live editor preview AND the bundled portfolio-generator Lambda),
+  upload-wizard registration, backend allowlists, and edit-page inline editing with
   full bidirectional sync. Use this skill whenever the user says "add a new template",
   "implement this design as a template", "create a template from this screenshot/HTML",
   or provides any visual design and asks to wire it into the portfolio system. This skill
@@ -15,9 +16,58 @@ description: >
 
 ## Overview
 
-Adding a new template requires changes across **6 integration points**. This skill walks through every one. Always complete them in order — skipping any step will leave the template partially wired.
+Adding a new template requires changes across a handful of integration points. This skill walks through every one. Always complete them in order — skipping any step will leave the template partially wired.
 
 **Template ID convention:** lowercase, hyphen-separated, max 20 chars (e.g., `prisma`, `slate-pro`).
+
+---
+
+## ⚠️ ARCHITECTURE REALITY CHECK — READ FIRST
+
+> **The "Python backend renderer + separate `.js` preview" model described in older parts of
+> this skill is OUTDATED. Do NOT create `.py` templates or `{id}.js` files.** Verify the real
+> layout before writing anything (`ls src/lib/templates/`, read `index.ts` + an existing
+> template like `circuit.ts`).
+
+The system actually uses **ONE unified TypeScript template per design**, shared by both the
+live editor preview and the published portfolio:
+
+- Templates live ONLY in the **frontend** repo: `AI-Portfolio-frontend/src/lib/templates/{id}.ts`.
+- Each exports a single `html(v: NormalizedData): string` (plus a local `css()`), importing
+  helpers from `./base` (`_editable`, `_listEditable`, `EDITOR_SCRIPT`, `DEFAULT_SECTION_ORDER`).
+  `normalize()` in `base.ts` is the ONLY place user data is HTML-escaped — template functions
+  receive pre-escaped values, so **do not** re-escape.
+- The **backend** portfolio generator is **TypeScript** (`AI-Portfolio-backend/src/lambdas/portfolio/handler.ts`),
+  NOT Python. It calls `renderPortfolio()` from the SAME frontend templates, which are bundled
+  into the Lambda at deploy time by **`bash build-portfolio-lambda.sh`** (copies
+  `frontend/src/lib/templates/*.ts`, esbuild-bundles, zips). Edit-preview updates instantly;
+  **published portfolios only change after `build-portfolio-lambda.sh` + `terraform apply`**.
+- The **edit page needs NO direct edits** — its template dropdown, profession filter, and stat
+  panel are all data-driven from `index.ts` (`TEMPLATE_META`, `TEMPLATE_FIELDS`). Register the
+  template there and the edit page picks it up automatically.
+- Model your new file on the closest existing template (e.g. `circuit.ts` for a dark
+  software-engineer theme) — copy its section-renderer structure, editable bindings, section
+  ordering loop, and `EDITOR_SCRIPT` placement verbatim, then swap in your design's CSS/markup.
+
+### Actual files to create / modify
+
+| # | File (repo) | Action |
+|---|------|--------|
+| 1 | `frontend: src/lib/templates/{id}.ts` | **CREATE** — the whole template (`html()` + `css()`) |
+| 2 | `frontend: src/lib/templates/index.ts` | **MODIFY** — `import`, add to `TEMPLATES` map, `TEMPLATE_META` (name/accent/**profession** — drives the edit-page dropdown + profession filter), and `TEMPLATE_FIELDS` (stat-override panel, if the template shows computed stats) |
+| 3 | `frontend: src/routes/app/resumes/upload/+page.svelte` | **MODIFY** — add a `{ id, name, tag }` entry to the **hardcoded** `TEMPLATES_BY_PROFESSION` array for the target profession (this grid is NOT driven by `index.ts`) |
+| 4 | `backend: src/lambdas/upload/handler.py` | **MODIFY** — add `'{id}'` to `ALLOWED_TEMPLATES` |
+| 5 | `backend: src/lambdas/auth/patch_portfolio.py` | **MODIFY** — add `'{id}'` to `_VALID_TEMPLATE_IDS` |
+| 6 | `backend: src/lambdas/auth/generate_project_image.py` | **MODIFY (if dark theme)** — add `'{id}'` to `_DARK_TEMPLATES` so AI project images get a dark background |
+| 7 | `backend: build-portfolio-lambda.sh` + `terraform apply` | **RUN** — bundle templates into the Lambda and deploy |
+
+> Both backend allowlists (#4, #5) gate the template ID server-side — miss either and selecting
+> the template fails with "Invalid templateId". The edit-page dropdown (`[userId]/[uploadId]/edit`)
+> requires no code change. WSL note: `node` is installed via nvm and is NOT on the
+> non-interactive PATH — source it first: `export NVM_DIR="$HOME/.nvm"; . "$NVM_DIR/nvm.sh"`.
+
+The "Files to Create / Modify" table and Python/JS steps below are legacy — treat them as
+conceptual background only; the table above is authoritative.
 
 ---
 

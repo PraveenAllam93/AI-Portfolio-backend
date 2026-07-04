@@ -481,3 +481,216 @@ def render_section_in_order(
             parts.append(result)
     return "\n".join(parts)
 ```
+
+---
+
+## Section Z — Editable-List Pitfalls (learned from marketing + designer + designer-2)
+
+These bugs all shipped in the marketing/designer/designer-2 templates and had to be
+fixed afterward. **Check every one of these before considering a new template done.**
+
+### Z1. Never `.slice(0, N)` an editable list field
+
+The right-side edit pane lets users add an unlimited number of items to any list field
+(`key_points`, `responsibilities`, `measurable_outcomes`, `tech_stack`, `software_used`,
+`performance_metrics`, `channels_used`, `channels_managed`, `skill_groups`, a skill
+group's `skills`, custom-section `tags`, …). If the template renders only
+`field.slice(0, 3).map(...)`, items beyond the cap are stored but never shown.
+
+Classic symptom the user reports: *"I added 2 more points but only the first 3 show —
+if I delete the 1st, then 2/3/4 appear."* That is a `.slice()` cap, not a data problem.
+
+```js
+// ❌ WRONG — truncates user content
+${c.performance_metrics.slice(0, 3).map(m => `<div>${m}</div>`).join('')}
+// ✅ RIGHT — render all
+${c.performance_metrics.map(m => `<div>${m}</div>`).join('')}
+```
+
+**Exception — decorative/aggregate/teaser renders MAY keep a slice.** These are NOT the
+canonical editable region (they carry no `le()` binding) and have a fixed visual budget:
+name initials (`slice(0,2)`), project banner icons, hero bio ellipsis
+(`bio.slice(0,120)+'…'`), a marquee "skill belt", an About-section "highlights" teaser,
+image carousels. Removing those slices bloats the design and fixes nothing. Rule of
+thumb: **if the region has an `le()`/`_listEditable()` binding, it must render ALL items;
+if it's a no-binding decorative summary, a slice is fine.**
+
+### Z2. One editable region ↔ exactly ONE field (never blend)
+
+The inline list editor (`openListEditor` in the edit page) reads its items from
+`data[field]`, where `field` is parsed from the region's `data-list-path`. Therefore a
+region bound to `experience.${i}.X` can only ever edit field `X`. Two failure modes we hit:
+
+- **marketing** rendered `key_points` *blended into* the `channels_managed` chips region
+  (`le(experience.${i}.channels_managed)`). Result: key_points weren't inline-editable,
+  and clicking the region opened the (usually empty) `channels_managed` editor → user saw
+  **no points**. It was also capped at 2.
+- **designer** rendered `[...tech_stack, ...software_used]` inside one region bound to
+  `tech_stack`. `software_used` (a separate editable field) had no region of its own and
+  was not editable; clicking showed only `tech_stack`.
+
+```js
+// ❌ WRONG — two fields in one region bound to just one of them
+<div ${le(`experience.${i}.channels_managed`)}>${[...channels_managed, ...key_points].map(...)}</div>
+
+// ✅ RIGHT — each field gets its OWN correctly-bound region, each rendering all items
+${exp.channels_managed?.length ? `<div ${le(`experience.${i}.channels_managed`)}>${exp.channels_managed.map(...).join('')}</div>` : ''}
+${exp.key_points?.length        ? `<div ${le(`experience.${i}.key_points`)}>${exp.key_points.map(...).join('')}</div>`        : ''}
+```
+
+### Z3. The `data-list-path` must match the field whose data you render
+
+A region bound to field A but displaying field B's data means: the preview shows B, but
+clicking edits A (and `openListEditor` reads A's array). Always verify
+`le(\`section.${i}.FIELD\`)` uses the **same** `FIELD` as the `data.FIELD.map(...)` inside it.
+
+### Z4. Every editable list field you DISPLAY needs its own `le()` region
+
+If you show a list field's data but wrap it in a plain `<div>` (no `le()`), it renders
+fine but is not click-to-edit in the preview, and right-pane edits can look like they
+"don't take" inline. Either give it an `le()` region or intentionally leave it display-only
+— but decide consciously. (It's fine for a template not to display a field at all; the bug
+is displaying it bound to the *wrong* field.)
+
+### Z5. Cross-check fields against the edit-page SECTION_CONFIG
+
+Before finishing, open `…/edit/+page.svelte` `SECTION_CONFIG` and confirm: every list
+field marked `inputType: 'list'` for the sections your template renders either (a) has its
+own correctly-bound `le()` region rendering all items, or (b) is deliberately not shown.
+`tech_stack`, `software_used`, `responsibilities`, `measurable_outcomes`, `key_points`,
+`performance_metrics`, `channels_used` are all independent list fields — never merge them.
+
+### Z6. Use the standard gating convention
+
+Editable list regions follow `${item.field?.length ? \`<div ${le(path)}>…</div>\` : ''}`.
+The `le` helper is usually `const le = (path) => em ? _listEditable(path) : '';` so the
+`data-list-path` only appears in edit mode.
+
+### Z7. Don't forget the deploy pipeline
+
+Template edits live in the frontend repo but are bundled into the portfolio-generator
+Lambda. The **edit-page preview updates instantly**, but **published** portfolios only
+change after `bash build-portfolio-lambda.sh` + `terraform apply` (and they re-render on
+next publish — existing static HTML in S3 is not rewritten retroactively). Always run the
+build + apply after touching any template `.ts`.
+
+### Z8. Reproduce the FULL design — all styling AND animations, not a subset
+
+The most common complaint on these three templates: the structure/markup was copied but
+**most animations and several styling details were dropped**, so the result looked flat
+versus the source design and had to be revised. Do **not** port "just a few elements" —
+carry the design over in full.
+
+When implementing a template from a design/HTML source, port **every** visual layer:
+
+- **All `@keyframes` and the elements that use them.** These templates animate heavily —
+  `riseUp`, `floatIn`, `drift`, `floatBob`, `drip`, `widen`, etc. If you copy an element
+  but omit its `animation:` rule (or the `@keyframes` block), it renders static. Copy the
+  keyframes AND apply them to the matching elements.
+- **Scroll-in reveals.** Elements use `class="reveal"` (often with stagger classes like
+  `d1`/`d2`) plus an `opacity:0` start state that a runtime IntersectionObserver flips to
+  visible. Every new section/element that should animate in needs the `reveal` class —
+  and verify the observer actually targets it. ⚠️ An element left at `opacity:0` whose
+  reveal never fires is **invisible**, not just un-animated. Check this in BOTH edit-preview
+  and published mode.
+- **Hover states & transitions.** `transition:` rules, hover color/transform effects,
+  custom cursor behavior — apply them to the new elements too, matching sibling elements.
+- **Decorative elements.** Orbs, gradients, marquees, floating shapes, dividers — these are
+  part of the design, not optional filler. Port them.
+- **Responsive `@media` breakpoints.** Every section needs its mobile/tablet rules or the
+  layout breaks on small screens.
+
+Rule: **structure + styling + animation are one deliverable.** After building, diff your
+template against the source design and confirm each animation and decorative/style element
+is present — a faithful clone, not a skeleton. When you reuse an existing CSS class for new
+markup (e.g. reusing `.camp-metrics` for `key_points`), confirm that class actually carries
+the intended look in that context.
+
+---
+
+## Section Z2 — Bugs shipped on the `glitch` template (fix these up front next time)
+
+Every one of these was a real defect reported by the user *after* "done" on the glitch
+software-engineer template. They are cheap to get right the first time — check each one.
+
+### Z9. Bind editable scalars to REAL data-paths, never to computed display fields
+
+`normalize()` synthesizes some display-only fields that have **no backing form input** and get
+**recomputed on every re-render** — so any inline edit to them is silently reverted and never
+reaches the center form.
+
+- **`experience[i].duration`** is computed from `start_date`/`end_date`. ❌ Binding
+  `_editable(\`experience.${i}.duration\`)` means typing a date does nothing (form pane doesn't
+  update, value reverts). ✅ Render TWO editable spans bound to the real fields:
+  ```js
+  ${exp.duration ? `<span class="exp-period">${exp.start_date ? `<span ${_editable(`experience.${i}.start_date`)}>${exp.start_date}</span>` : ''}${exp.start_date && exp.end_date ? ' &ndash; ' : ''}${exp.end_date ? `<span ${_editable(`experience.${i}.end_date`)}>${exp.end_date}</span>` : ''}</span>` : ''}
+  ```
+  The edit page's `updateFieldFromIframe` maps `{section}.{i}.{field}` straight to the form item,
+  so `start_date`/`end_date` round-trip and sync; `duration` does not exist as a field.
+- General rule: a `data-path` is only valid if it names a key that exists in that section's
+  `SECTION_CONFIG.fields` (or `profile.*` / `portfolio.*` / `template_overrides.*`). Cross-check
+  before binding.
+
+### Z10. There are TWO distinct "headline" fields — bind both, to the right paths
+
+- **`profile.headline`** = the raw professional title (form label "Professional Title",
+  element `rp-headline`). Exposed in `normalize` as `v.profile_headline`.
+- **`portfolio.headline`** = the AI-written headline (form label "Professional Headline",
+  element `pf-headline`). Exposed as `v.headline`.
+
+If your hero shows a small "title/tag" line AND a larger headline, they are different fields:
+bind the tag with `_editable('profile.headline')` and the headline with
+`_editable('portfolio.headline')`. A common miss is rendering the title as a plain
+(non-editable) decorative tag — users expect to edit it. Profile contact fields use
+`profile.email` / `profile.phone` / `profile.location`; bio uses `portfolio.bio`.
+
+### Z11. Render `images[]` for experience AND projects — they are real, uploadable fields
+
+Both `experience` and `projects` carry an `images` array (`inputType: 'images'`, max 3),
+uploaded via the form's image uploader and normalized to safe URLs in `v.*.images`. A template
+that never renders them looks broken ("I uploaded an image but nothing shows"). Display them
+where the **design** puts its project visual (don't invent a spot) — confirm placement against
+the source/screenshot.
+
+### Z12. Multiple images = a looping crossfade slideshow, not a vertical stack
+
+When an item has >1 image, cycle through ALL of them on a timer (1→2→3→4→1…), don't stack them.
+Overlay them in one fixed-aspect frame and crossfade via a tiny script in the template's own
+`<script>` (runs in both edit-preview and published mode):
+```css
+.shots{position:relative;width:100%;aspect-ratio:4/3;overflow:hidden}
+.shots img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:0;transition:opacity .7s}
+.shots img.active{opacity:1}
+```
+```js
+document.querySelectorAll('.shots').forEach(function(box){
+  var imgs=box.querySelectorAll('img'); if(imgs.length<2)return; var i=0;
+  setInterval(function(){imgs[i].classList.remove('active');i=(i+1)%imgs.length;imgs[i].classList.add('active');},3000);
+});
+```
+First image gets `.active`; add position dots for polish. Single image renders statically.
+
+### Z13. Gate the custom cursor (and any `cursor:none`) to published mode only
+
+If the design hides the native cursor (`body{cursor:none}` + a JS-driven custom cursor dot),
+that makes inline editing unusable in the editor. Only emit the cursor markup and the
+`cursor:none` rule when `!v.edit_mode`; pass `v.edit_mode` into `css()` and guard the cursor
+`<div>`s. Any "fancy pointer" interaction gets the same treatment.
+
+### Z14. One `<section id="{key}">` per orderable section — never merge two sections
+
+Section reorder/visibility works by matching top-level `<section id>` against `section_order` /
+`hidden_sections`. A source design that visually combines two of our sections (e.g.
+Education + Certifications in one block) MUST still be split into separate `<section>` elements,
+or reordering/hiding one of them breaks. Style them to look cohesive if needed, but keep them
+as distinct sections wired through the `sectionMap` + ordered-render loop.
+
+### Z15. Drop design features with no data backing; add sections our model needs
+
+- A purely decorative interactive control that has no field behind it (e.g. a "bio length"
+  slider switching between 5 hardcoded paragraphs) does NOT map to our single editable `bio` —
+  drop it rather than ship a dead control.
+- Conversely, render every section our data model expects even if the source design omits it
+  (e.g. a software-engineer design with no Experience block — we still need `experience`,
+  `skills`, `projects`, etc. all handled). Use the closest existing template as the section
+  checklist.

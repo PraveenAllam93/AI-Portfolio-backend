@@ -62,9 +62,12 @@ _ALLOWED_FIELDS: dict[str, int] = {
     'uniqueValue': 500,
 }
 
-# Valid templateId values (top-level field, not nested in portfolioContent)
+# Valid templateId values
 _VALID_TEMPLATE_IDS: frozenset = frozenset({
-    'nebula', 'galaxy', 'codex', 'neon', 'circuit', 'navy-gold', 'cosmos',
+    'aurora', 'circuit', 'codex', 'cosmos', 'luxe',
+    'navy-gold', 'nebula', 'neon', 'quantum', 'retro',
+    'designer', 'designer-2', 'marketing', 'glitch',
+    'structura', 'blueprint', 'precision',
 })
 
 # Shape B: array sections in parsedData -> max item count
@@ -94,7 +97,7 @@ _ALLOWED_LIST_SECTIONS: dict[str, tuple] = {
 
 # Shape B: object sections in parsedData -> allowed top-level keys
 _ALLOWED_OBJECT_SECTIONS: dict[str, set] = {
-    'profile': {'full_name', 'headline', 'email', 'phone', 'location', 'summary', 'social_links', 'profile_image'},
+    'profile': {'full_name', 'headline', 'email', 'phone', 'location', 'summary', 'social_links', 'profile_image', 'summary_image', 'contact_tagline', 'core_expertise'},
 }
 
 # Max character length for any single string value within an array item
@@ -229,50 +232,19 @@ def lambda_handler(event, context):
 
 
 def _handle_field_patch(body: dict, path_user_id: str, upload_id: str, correlation_id: str) -> dict:
-    """Patch a scalar field — portfolioContent.* or top-level templateId."""
+    """Patch a scalar portfolioContent.* field.
+
+    Note: templateId is NOT handled here — it lives at the record root and is
+    updated via the 'config' section patch (_handle_config_patch), which keys
+    the correct PORTFOLIO#{uploadId} record. A previous templateId branch here
+    wrote to a stale 'PORTFOLIO#current' key and has been removed.
+    """
     field = body.get('field', '')
     value = body.get('value')
 
-    # templateId is stored at the record root, not inside portfolioContent
-    if field == 'templateId':
-        if not isinstance(value, str) or value not in _VALID_TEMPLATE_IDS:
-            return _response(400, {
-                'error': f'Invalid templateId. Must be one of: {", ".join(sorted(_VALID_TEMPLATE_IDS))}'
-            })
-        try:
-            table = dynamodb.Table(DYNAMODB_TABLE)
-            table.update_item(
-                Key={'PK': f'USER#{path_user_id}', 'SK': 'PORTFOLIO#current'},
-                UpdateExpression='SET #templateId = :value, #updatedAt = :updatedAt',
-                ConditionExpression='attribute_exists(#pk)',
-                ExpressionAttributeNames={
-                    '#pk': 'PK',
-                    '#templateId': 'templateId',
-                    '#updatedAt': 'updatedAt',
-                },
-                ExpressionAttributeValues={
-                    ':value': value,
-                    ':updatedAt': datetime.now(timezone.utc).isoformat(),
-                },
-            )
-            _trigger_rebuild(path_user_id, upload_id)
-            _log('INFO', 'Portfolio template changed',
-                 correlationId=correlation_id,
-                 userId=path_user_id,
-                 templateId=value)
-            return _response(200, {'field': 'templateId', 'value': value, 'status': 'saved'})
-        except dynamodb.meta.client.exceptions.ConditionalCheckFailedException:
-            return _response(404, {'error': 'Portfolio not found. Generate a portfolio first.'})
-        except Exception as e:
-            _log('ERROR', 'Patch templateId error',
-                 correlationId=correlation_id,
-                 userId=path_user_id,
-                 error=str(e))
-            return _response(500, {'error': 'Internal server error'})
-
     if field not in _ALLOWED_FIELDS:
         return _response(400, {
-            'error': f'field must be one of: templateId, {", ".join(sorted(_ALLOWED_FIELDS))}'
+            'error': f'field must be one of: {", ".join(sorted(_ALLOWED_FIELDS))}'
         })
 
     if not isinstance(value, str):
@@ -305,7 +277,7 @@ def _handle_field_patch(body: dict, path_user_id: str, upload_id: str, correlati
             },
         )
 
-        _trigger_rebuild(path_user_id)
+        _trigger_rebuild(path_user_id, upload_id)
 
         _log('INFO', 'Portfolio field patched',
              correlationId=correlation_id,
@@ -331,11 +303,79 @@ _ALL_SECTION_KEYS = {
     'custom_sections',
 }
 
+# Allowed keys inside the templateOverrides map and their max value
+_ALLOWED_OVERRIDE_KEYS: frozenset = frozenset({
+    'years_experience', 'projects_count', 'certifications_count',
+    'achievements_count', 'roles_count', 'total_skills',
+})
+
+
+def _handle_template_overrides_patch(data: object, path_user_id: str, upload_id: str, correlation_id: str) -> dict:
+    """
+    Replace the templateOverrides map at the record root.
+    data = { years_experience?: int|null, projects_count?: int|null, ... }
+    Only keys in _ALLOWED_OVERRIDE_KEYS are accepted; values must be
+    non-negative integers ≤ 9999, or null to clear an override.
+    The entire map is replaced so the frontend always sends the full object.
+    """
+    if not isinstance(data, dict):
+        return _response(400, {'error': 'template_overrides data must be an object'})
+
+    sanitized: dict = {}
+    for k, v in data.items():
+        if k not in _ALLOWED_OVERRIDE_KEYS:
+            continue  # drop unknown keys silently
+        if v is None:
+            continue  # null = "use auto" → omit from stored map (smaller item)
+        if isinstance(v, float):
+            if v != int(v):
+                return _response(400, {'error': f'template_overrides.{k} must be an integer'})
+            v = int(v)
+        if not isinstance(v, int) or not (0 <= v <= 9999):
+            return _response(400, {
+                'error': f'template_overrides.{k} must be a non-negative integer ≤ 9999 or null'
+            })
+        sanitized[k] = v
+
+    try:
+        table = dynamodb.Table(DYNAMODB_TABLE)
+        table.update_item(
+            Key={
+                'PK': f'USER#{path_user_id}',
+                'SK': f'PORTFOLIO#{upload_id}',
+            },
+            UpdateExpression='SET #to = :data, #updatedAt = :updatedAt',
+            ConditionExpression='attribute_exists(#pk)',
+            ExpressionAttributeNames={
+                '#pk': 'PK',
+                '#to': 'templateOverrides',
+                '#updatedAt': 'updatedAt',
+            },
+            ExpressionAttributeValues={
+                ':data': sanitized,
+                ':updatedAt': datetime.now(timezone.utc).isoformat(),
+            },
+        )
+        _trigger_rebuild(path_user_id, upload_id)
+        _log('INFO', 'Template overrides patched',
+             correlationId=correlation_id,
+             userId=path_user_id,
+             keys=list(sanitized.keys()))
+        return _response(200, {'section': 'template_overrides', 'status': 'saved'})
+    except dynamodb.meta.client.exceptions.ConditionalCheckFailedException:
+        return _response(404, {'error': 'Portfolio not found. Generate a portfolio first.'})
+    except Exception as e:
+        _log('ERROR', 'Patch template overrides error',
+             correlationId=correlation_id,
+             userId=path_user_id,
+             error=str(e))
+        return _response(500, {'error': 'Internal server error'})
+
 
 def _handle_config_patch(data: object, path_user_id: str, upload_id: str, correlation_id: str) -> dict:
     """
-    Update sectionOrder and/or hiddenSections at the record root level.
-    data = { sectionOrder?: string[], hiddenSections?: string[] }
+    Update templateId, sectionOrder and/or hiddenSections at the record root level.
+    data = { templateId?: string, sectionOrder?: string[], hiddenSections?: string[] }
     """
     if not isinstance(data, dict):
         return _response(400, {'error': 'config data must be an object'})
@@ -343,6 +383,16 @@ def _handle_config_patch(data: object, path_user_id: str, upload_id: str, correl
     update_parts = []
     expr_names = {'#pk': 'PK', '#updatedAt': 'updatedAt'}
     expr_values = {':updatedAt': datetime.now(timezone.utc).isoformat()}
+
+    if 'templateId' in data:
+        template_id = data['templateId']
+        if not isinstance(template_id, str) or template_id not in _VALID_TEMPLATE_IDS:
+            return _response(400, {
+                'error': f'Invalid templateId. Must be one of: {", ".join(sorted(_VALID_TEMPLATE_IDS))}'
+            })
+        update_parts.append('#templateId = :templateId')
+        expr_names['#templateId'] = 'templateId'
+        expr_values[':templateId'] = template_id
 
     if 'sectionOrder' in data:
         order = data['sectionOrder']
@@ -364,7 +414,7 @@ def _handle_config_patch(data: object, path_user_id: str, upload_id: str, correl
         expr_values[':hiddenSections'] = hidden
 
     if not update_parts:
-        return _response(400, {'error': 'config data must include sectionOrder or hiddenSections'})
+        return _response(400, {'error': 'config data must include templateId, sectionOrder, or hiddenSections'})
 
     try:
         table = dynamodb.Table(DYNAMODB_TABLE)
@@ -379,7 +429,7 @@ def _handle_config_patch(data: object, path_user_id: str, upload_id: str, correl
             ExpressionAttributeValues=expr_values,
         )
 
-        _trigger_rebuild(path_user_id)
+        _trigger_rebuild(path_user_id, upload_id)
 
         _log('INFO', 'Portfolio config patched',
              correlationId=correlation_id,
@@ -406,6 +456,10 @@ def _handle_section_patch(body: dict, path_user_id: str, upload_id: str, correla
     # 'config' is a special section stored at the record root (not parsedData)
     if section == 'config':
         return _handle_config_patch(data, path_user_id, upload_id, correlation_id)
+
+    # 'template_overrides' is stored at the record root (not parsedData)
+    if section == 'template_overrides':
+        return _handle_template_overrides_patch(data, path_user_id, upload_id, correlation_id)
 
     all_sections = (
         set(_ALLOWED_ARRAY_SECTIONS)
@@ -502,7 +556,7 @@ def _handle_section_patch(body: dict, path_user_id: str, upload_id: str, correla
             },
         )
 
-        _trigger_rebuild(path_user_id)
+        _trigger_rebuild(path_user_id, upload_id)
 
         item_count = len(sanitized_data) if isinstance(sanitized_data, list) else 1
         _log('INFO', 'Portfolio section patched',

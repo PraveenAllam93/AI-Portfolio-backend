@@ -104,8 +104,10 @@ def lambda_handler(event, context):
             'activeVersion': item.get('activeVersion'),
             'createdAt': item.get('createdAt'),
             'updatedAt': item.get('updatedAt'),
+            'lastPublishedAt': item.get('lastPublishedAt'),
             'sectionOrder': item.get('sectionOrder'),
             'hiddenSections': item.get('hiddenSections'),
+            'templateOverrides': item.get('templateOverrides'),
         })
 
     except Exception as e:

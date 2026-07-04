@@ -178,30 +178,18 @@ resource "aws_iam_role_policy" "resume_ingestion_logs" {
 }
 
 resource "aws_iam_role_policy" "resume_ingestion_s3" {
-  name = "s3-read-validated"
+  name = "s3-read-write-validated"
   role = aws_iam_role.resume_ingestion.id
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [{
-      # GetObject covers both GetObject and HeadObject in IAM
-      Sid      = "ReadValidatedResume"
+      # GetObject covers both GetObject and HeadObject in IAM.
+      # PutObject lets ingestion persist the extracted text ({id}.txt) so the
+      # paused pipeline can resume without re-extracting.
+      Sid      = "ReadWriteValidatedResume"
       Effect   = "Allow"
-      Action   = ["s3:GetObject"]
+      Action   = ["s3:GetObject", "s3:PutObject"]
       Resource = "${var.validated_bucket_arn}/*"
-    }]
-  })
-}
-
-resource "aws_iam_role_policy" "resume_ingestion_sqs" {
-  name = "sqs-send"
-  role = aws_iam_role.resume_ingestion.id
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [{
-      Sid      = "SendToProcessingQueue"
-      Effect   = "Allow"
-      Action   = ["sqs:SendMessage", "sqs:GetQueueAttributes"]
-      Resource = var.processing_queue_arn
     }]
   })
 }
@@ -220,16 +208,16 @@ resource "aws_iam_role_policy" "resume_ingestion_dynamodb" {
   })
 }
 
-resource "aws_iam_role_policy" "resume_ingestion_invoke_portfolio" {
-  name = "invoke-portfolio-generator"
+resource "aws_iam_role_policy" "resume_ingestion_invoke_classify" {
+  name = "invoke-classify-profession"
   role = aws_iam_role.resume_ingestion.id
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [{
-      Sid    = "InvokePortfolioGenerator"
+      Sid    = "InvokeClassifyProfession"
       Effect = "Allow"
       Action = ["lambda:InvokeFunction"]
-      Resource = "arn:aws:lambda:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:function:${var.name_prefix}-portfolio-generator"
+      Resource = "arn:aws:lambda:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:function:${var.name_prefix}-classify-profession"
     }]
   })
 }
@@ -537,7 +525,8 @@ resource "aws_lambda_function" "resume_ingestion" {
   handler          = "handler.lambda_handler"
   source_code_hash = data.archive_file.resume_ingestion.output_base64sha256
   runtime          = "python3.12"
-  timeout          = 60
+  # 120s: extraction (incl. possible OCR) + synchronous profession classify.
+  timeout          = 120
   memory_size      = 512
   layers           = [aws_lambda_layer_version.pdf_processing.arn]
 
@@ -547,8 +536,7 @@ resource "aws_lambda_function" "resume_ingestion" {
     variables = {
       VALIDATED_BUCKET     = var.validated_bucket_name
       DYNAMODB_TABLE       = var.dynamodb_table_name
-      PROCESSING_QUEUE     = var.processing_queue_url
-      PORTFOLIO_LAMBDA_NAME = "${var.name_prefix}-portfolio-generator"
+      CLASSIFY_LAMBDA_NAME = "${var.name_prefix}-classify-profession"
       ENVIRONMENT          = var.environment
     }
   }
@@ -565,6 +553,69 @@ resource "aws_lambda_permission" "validated_s3_trigger" {
   function_name = aws_lambda_function.resume_ingestion.function_name
   principal     = "s3.amazonaws.com"
   source_arn    = var.validated_bucket_arn
+}
+
+# -----------------------------------------------------------------------------
+# 3b. CLASSIFY PROFESSION
+# Invoked synchronously by resume_ingestion. Classifies the resume into a
+# profession (advisory). Needs: secretsmanager:GetSecretValue (OpenAI key).
+# -----------------------------------------------------------------------------
+
+resource "aws_iam_role" "classify_profession" {
+  name               = "${var.name_prefix}-classify-profession-role"
+  assume_role_policy = data.aws_iam_policy_document.lambda_assume_role.json
+  tags               = var.tags
+}
+
+resource "aws_iam_role_policy" "classify_profession_logs" {
+  name   = "cloudwatch-logs"
+  role   = aws_iam_role.classify_profession.id
+  policy = data.aws_iam_policy_document.cloudwatch_logs.json
+}
+
+resource "aws_iam_role_policy" "classify_profession_secrets" {
+  name = "secrets-openai"
+  role = aws_iam_role.classify_profession.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Sid      = "GetOpenAIKey"
+      Effect   = "Allow"
+      Action   = ["secretsmanager:GetSecretValue"]
+      Resource = "arn:aws:secretsmanager:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:secret:${var.openai_api_key_secret_name}*"
+    }]
+  })
+}
+
+data "archive_file" "classify_profession" {
+  type        = "zip"
+  source_dir  = "${path.module}/../../../src/lambdas/classify_profession"
+  output_path = "${path.module}/../../../dist/lambdas/classify_profession.zip"
+}
+
+resource "aws_lambda_function" "classify_profession" {
+  filename         = data.archive_file.classify_profession.output_path
+  function_name    = "${var.name_prefix}-classify-profession"
+  role             = aws_iam_role.classify_profession.arn
+  handler          = "handler.lambda_handler"
+  source_code_hash = data.archive_file.classify_profession.output_base64sha256
+  runtime          = "python3.12"
+  timeout          = 30
+  memory_size      = 256
+
+  reserved_concurrent_executions = var.reserved_concurrency
+
+  environment {
+    variables = {
+      OPENAI_SECRET_NAME = var.openai_api_key_secret_name
+      ENVIRONMENT        = var.environment
+    }
+  }
+
+  tags = merge(var.tags, {
+    Name     = "${var.name_prefix}-classify-profession"
+    Function = "Resume profession classification"
+  })
 }
 
 # -----------------------------------------------------------------------------
@@ -717,6 +768,101 @@ resource "aws_lambda_function" "get_status" {
   tags = merge(var.tags, {
     Name     = "${var.name_prefix}-get-status"
     Function = "Get processing status"
+  })
+}
+
+# =============================================================================
+# 7b. START GENERATION LAMBDA (API)
+# Resumes the paused pipeline after the user confirms profession + template.
+# Needs: dynamodb GetItem/UpdateItem (USER#*), s3:GetObject (validated text),
+#        sqs:SendMessage (processing queue).
+# =============================================================================
+
+resource "aws_iam_role" "start_generation" {
+  name               = "${var.name_prefix}-start-generation-role"
+  assume_role_policy = data.aws_iam_policy_document.lambda_assume_role.json
+  tags               = var.tags
+}
+
+resource "aws_iam_role_policy" "start_generation_logs" {
+  name   = "cloudwatch-logs"
+  role   = aws_iam_role.start_generation.id
+  policy = data.aws_iam_policy_document.cloudwatch_logs.json
+}
+
+resource "aws_iam_role_policy" "start_generation_dynamodb" {
+  name = "dynamodb-read-update"
+  role = aws_iam_role.start_generation.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Sid      = "ReadUpdateOwnUpload"
+      Effect   = "Allow"
+      Action   = ["dynamodb:GetItem", "dynamodb:UpdateItem"]
+      Resource = var.dynamodb_table_arn
+      Condition = {
+        "ForAllValues:StringLike" = {
+          "dynamodb:LeadingKeys" = ["USER#*"]
+        }
+      }
+    }]
+  })
+}
+
+resource "aws_iam_role_policy" "start_generation_s3" {
+  name = "s3-read-validated-text"
+  role = aws_iam_role.start_generation.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Sid      = "ReadValidatedText"
+      Effect   = "Allow"
+      Action   = ["s3:GetObject"]
+      Resource = "${var.validated_bucket_arn}/*"
+    }]
+  })
+}
+
+resource "aws_iam_role_policy" "start_generation_sqs" {
+  name = "sqs-send"
+  role = aws_iam_role.start_generation.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Sid      = "SendToProcessingQueue"
+      Effect   = "Allow"
+      Action   = ["sqs:SendMessage", "sqs:GetQueueAttributes"]
+      Resource = var.processing_queue_arn
+    }]
+  })
+}
+
+resource "aws_lambda_function" "start_generation" {
+  # Reuses the same auth/ zip as get_portfolio.
+  filename         = data.archive_file.get_portfolio.output_path
+  function_name    = "${var.name_prefix}-start-generation"
+  role             = aws_iam_role.start_generation.arn
+  handler          = "start_generation.lambda_handler"
+  source_code_hash = data.archive_file.get_portfolio.output_base64sha256
+  runtime          = "python3.12"
+  timeout          = var.timeout
+  memory_size      = var.memory_size
+
+  reserved_concurrent_executions = var.reserved_concurrency
+
+  environment {
+    variables = {
+      DYNAMODB_TABLE   = var.dynamodb_table_name
+      VALIDATED_BUCKET = var.validated_bucket_name
+      PROCESSING_QUEUE = var.processing_queue_url
+      ALLOWED_ORIGIN   = var.allowed_origin
+      ENVIRONMENT      = var.environment
+    }
+  }
+
+  tags = merge(var.tags, {
+    Name     = "${var.name_prefix}-start-generation"
+    Function = "Resume pipeline after profession selection"
   })
 }
 
@@ -1749,6 +1895,20 @@ resource "aws_iam_role_policy" "toggle_portfolio_live_dynamodb" {
   })
 }
 
+resource "aws_iam_role_policy" "toggle_portfolio_live_cloudfront" {
+  name = "cloudfront-invalidate"
+  role = aws_iam_role.toggle_portfolio_live.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Sid      = "InvalidatePortfolioCache"
+      Effect   = "Allow"
+      Action   = ["cloudfront:CreateInvalidation"]
+      Resource = var.cloudfront_distribution_arn
+    }]
+  })
+}
+
 resource "aws_lambda_function" "toggle_portfolio_live" {
   filename         = data.archive_file.get_portfolio.output_path
   function_name    = "${var.name_prefix}-toggle-portfolio-live"
@@ -1763,15 +1923,96 @@ resource "aws_lambda_function" "toggle_portfolio_live" {
 
   environment {
     variables = {
-      DYNAMODB_TABLE = var.dynamodb_table_name
-      ALLOWED_ORIGIN = var.allowed_origin
-      ENVIRONMENT    = var.environment
+      DYNAMODB_TABLE             = var.dynamodb_table_name
+      CLOUDFRONT_DISTRIBUTION_ID = var.cloudfront_distribution_id
+      ALLOWED_ORIGIN             = var.allowed_origin
+      ENVIRONMENT                = var.environment
     }
   }
 
   tags = merge(var.tags, {
     Name     = "${var.name_prefix}-toggle-portfolio-live"
     Function = "Toggle portfolio isLive flag"
+  })
+}
+
+# =============================================================================
+# GET PORTFOLIO PREVIEW URL
+# GET /portfolio/{userId}/{uploadId}/preview?versionId=v3
+# Owner-only: generates a short-lived presigned S3 URL for any version.
+# Needs: dynamodb:GetItem (verify version ownership), s3:GetObject (sign URL).
+# =============================================================================
+
+resource "aws_iam_role" "get_portfolio_preview_url" {
+  name               = "${var.name_prefix}-portfolio-preview-url-role"
+  assume_role_policy = data.aws_iam_policy_document.lambda_assume_role.json
+  tags               = var.tags
+}
+
+resource "aws_iam_role_policy" "get_portfolio_preview_url_logs" {
+  name   = "cloudwatch-logs"
+  role   = aws_iam_role.get_portfolio_preview_url.id
+  policy = data.aws_iam_policy_document.cloudwatch_logs.json
+}
+
+resource "aws_iam_role_policy" "get_portfolio_preview_url_dynamodb" {
+  name = "dynamodb-get-version"
+  role = aws_iam_role.get_portfolio_preview_url.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Sid    = "ReadVersionRecord"
+      Effect = "Allow"
+      Action = ["dynamodb:GetItem"]
+      Resource = var.dynamodb_table_arn
+      Condition = {
+        "ForAllValues:StringLike" = {
+          "dynamodb:LeadingKeys" = ["USER#*"]
+        }
+      }
+    }]
+  })
+}
+
+resource "aws_iam_role_policy" "get_portfolio_preview_url_s3" {
+  name = "s3-presign-portfolio-read"
+  role = aws_iam_role.get_portfolio_preview_url.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Sid      = "SignPresignedGetUrl"
+      Effect   = "Allow"
+      Action   = ["s3:GetObject"]
+      Resource = "${var.portfolio_bucket_arn}/*"
+    }]
+  })
+}
+
+resource "aws_lambda_function" "get_portfolio_preview_url" {
+  filename         = data.archive_file.get_portfolio.output_path
+  function_name    = "${var.name_prefix}-get-portfolio-preview-url"
+  role             = aws_iam_role.get_portfolio_preview_url.arn
+  handler          = "get_portfolio_preview_url.lambda_handler"
+  source_code_hash = data.archive_file.get_portfolio.output_base64sha256
+  runtime          = "python3.12"
+  timeout          = var.timeout
+  memory_size      = var.memory_size
+
+  reserved_concurrent_executions = var.reserved_concurrency
+
+  environment {
+    variables = {
+      DYNAMODB_TABLE         = var.dynamodb_table_name
+      PORTFOLIO_BUCKET       = var.portfolio_bucket_name
+      PREVIEW_URL_TTL_SECONDS = "3600"
+      ALLOWED_ORIGIN         = var.allowed_origin
+      ENVIRONMENT            = var.environment
+    }
+  }
+
+  tags = merge(var.tags, {
+    Name     = "${var.name_prefix}-get-portfolio-preview-url"
+    Function = "Generate presigned S3 URL for owner portfolio preview"
   })
 }
 
@@ -1799,7 +2040,7 @@ resource "aws_iam_role_policy" "delete_portfolio_dynamodb" {
     Statement = [{
       Sid    = "DeletePortfolio"
       Effect = "Allow"
-      Action = ["dynamodb:GetItem", "dynamodb:Query", "dynamodb:DeleteItem"]
+      Action = ["dynamodb:GetItem", "dynamodb:Query", "dynamodb:DeleteItem", "dynamodb:BatchWriteItem"]
       Resource = [var.dynamodb_table_arn]
       Condition = {
         "ForAllValues:StringLike" = {

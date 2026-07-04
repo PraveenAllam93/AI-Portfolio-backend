@@ -90,6 +90,17 @@ output "get_status_name" {
   value       = aws_lambda_function.get_status.function_name
 }
 
+# Start Generation Lambda (API)
+output "start_generation_arn" {
+  description = "ARN of the start generation Lambda"
+  value       = aws_lambda_function.start_generation.arn
+}
+
+output "start_generation_invoke_arn" {
+  description = "Invoke ARN of the start generation Lambda"
+  value       = aws_lambda_function.start_generation.invoke_arn
+}
+
 # Process Access Logs Lambda
 output "process_access_logs_arn" {
   description = "ARN of the process access logs Lambda"
@@ -301,4 +312,13 @@ output "delete_portfolio_arn" {
 }
 output "delete_portfolio_invoke_arn" {
   value = aws_lambda_function.delete_portfolio.invoke_arn
+}
+
+
+# Get Portfolio Preview URL Lambda
+output "get_portfolio_preview_url_arn" {
+  value = aws_lambda_function.get_portfolio_preview_url.arn
+}
+output "get_portfolio_preview_url_invoke_arn" {
+  value = aws_lambda_function.get_portfolio_preview_url.invoke_arn
 }

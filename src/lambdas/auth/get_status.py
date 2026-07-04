@@ -45,6 +45,7 @@ STATUS_MESSAGES = {
     'VALIDATED': 'Resume validated successfully',
     'REJECTED': 'Resume validation failed',
     'EXTRACTING_TEXT': 'Extracting text from your resume...',
+    'AWAITING_SELECTION': 'Detecting your profession...',
     'QUEUED_FOR_AI': 'Queued for AI processing',
     'AI_PROCESSING': 'AI is analyzing your resume...',
     'AI_COMPLETE': 'AI analysis complete',
@@ -76,6 +77,7 @@ STATUS_PROGRESS = {
     'VALIDATING': 15,
     'VALIDATED': 25,
     'EXTRACTING_TEXT': 35,
+    'AWAITING_SELECTION': 50,
     'QUEUED_FOR_AI': 45,
     'AI_PROCESSING': 60,
     'AI_COMPLETE': 80,
@@ -172,6 +174,17 @@ def lambda_handler(event, context):
             'progress': STATUS_PROGRESS.get(status, 0),
             'isTerminal': status in TERMINAL_STATES,
         }
+
+        # Expose the auto-detected profession so the upload wizard can
+        # pre-select / auto-skip the profession step. Advisory only.
+        if status == 'AWAITING_SELECTION':
+            predicted = item.get('predictedProfession')
+            confidence = item.get('predictedConfidence')
+            result['predictedProfession'] = predicted if predicted else None
+            try:
+                result['predictedConfidence'] = int(confidence) if confidence is not None else 0
+            except (TypeError, ValueError):
+                result['predictedConfidence'] = 0
 
         # Add portfolio URL if complete
         if status == 'COMPLETE':

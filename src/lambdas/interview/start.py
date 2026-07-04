@@ -47,6 +47,10 @@ def lambda_handler(event, context):
         mode = str(body.get('mode', 'non-follow-up')).lower()
         source = str(body.get('source', 'resume')).lower()
         role_info = sanitize_role_info(body.get('roleInfo', ''))
+        # Optional: which portfolio to base resume questions on. When omitted we
+        # fall back to the user's most recent COMPLETE upload.
+        upload_id = body.get('uploadId')
+        upload_id = str(upload_id).strip() if upload_id else None
 
         # Input validation
         if difficulty not in VALID_DIFFICULTIES:
@@ -63,8 +67,12 @@ def lambda_handler(event, context):
         # Fetch user profile (if source=resume)
         user_profile = None
         if source == 'resume':
-            user_profile = get_user_profile(user_id)
+            user_profile = get_user_profile(user_id, upload_id)
             if not user_profile:
+                if upload_id:
+                    return response(400, {
+                        'error': 'That portfolio could not be found or is not ready yet. Please pick a different portfolio.'
+                    })
                 return response(400, {
                     'error': 'No completed resume found. Please upload and process a resume first, or choose "Job Role" as the source.'
                 })
@@ -114,6 +122,7 @@ def lambda_handler(event, context):
                 'difficulty': difficulty,
                 'totalQuestions': total_questions,
                 'source': source,
+                'sourceUploadId': upload_id or '',
                 'roleInfo': role_info,
                 'status': 'active',
                 'questionsAsked': 0,
@@ -149,6 +158,7 @@ def lambda_handler(event, context):
                 'difficulty': difficulty,
                 'totalQuestions': total_questions,
                 'source': source,
+                'sourceUploadId': upload_id or '',
                 'roleInfo': role_info,
                 'status': 'active',
                 'questionsAsked': 0,

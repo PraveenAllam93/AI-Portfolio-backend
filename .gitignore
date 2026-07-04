@@ -255,3 +255,6 @@ Miniconda3-latest-Linux-x86_64.sh
 awscliv2.zip
 aws/
 dist/
+
+# Windows Zone.Identifier alternate-data-stream junk (WSL/SMB)
+*Zone.Identifier

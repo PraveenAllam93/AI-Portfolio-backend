@@ -318,53 +318,130 @@ Triggered by async Lambda invocation.
 
 ## Portfolio Templates
 
-Eleven templates, each a Python module exporting `html(data)` and `css()`:
+Templates are **TypeScript modules** that live in the **frontend repo** at:
 
-| Template ID | Style |
-|------------|-------|
-| `minimal` | Clean, whitespace-heavy, professional |
-| `modern` | Contemporary card-based layout |
-| `bold` | High contrast, strong typography |
-| `creative` | Artistic, unconventional layout |
-| `aurora` | Gradient-based, vibrant colors |
-| `executive` | Corporate, formal, structured |
-| `luxury` | Premium feel, refined typography |
-| `nebula` | Dark theme, cosmic gradients |
-| `galaxy` | Deep purple-dark, cosmic |
-| `codex` | Light, tech-focused, code-aesthetic |
-| `neon` | Cyber green on dark, high energy |
+```
+AI-Portfolio-frontend/src/lib/templates/
+├── index.ts        # renderPortfolio() dispatcher + normalize()
+├── base.ts         # shared helpers (_editable, _listEditable, EDITOR_SCRIPT)
+├── aurora.ts
+├── circuit.ts
+├── codex.ts
+├── cosmos.ts
+├── galaxy.ts
+├── luxe.ts
+├── navy-gold.ts
+├── nebula.ts
+├── neon.ts
+├── quantum.ts
+└── retro.ts
+```
+
+Each template exports `html(v: NormalizedData): string` and produces a fully self-contained HTML file with embedded CSS.
+
+### Where Templates Are Used
+
+| Context | Path | Purpose |
+|---------|------|---------|
+| Edit page preview | `AI-Portfolio-frontend/src/lib/templates/` | Live in-browser re-render as user edits |
+| Published portfolio | Same files, **bundled into Lambda zip** at build time | Generates static HTML written to S3 |
+
+> **Critical:** Both contexts use the exact same TypeScript source. The edit preview and the published portfolio are pixel-identical by design. The only difference is `publishMode=true` on the Lambda side, which strips `EDITOR_SCRIPT` and `contenteditable` attributes, and injects a `CSP: script-src 'none'` meta tag.
+
+### Shared Template Helpers (base.ts)
+
+- `normalize(parsedData, portfolioContent, ...)` — HTML-escapes all strings, validates URLs, merges section data
+- `_editable(path)` — renders `data-path` + `contenteditable` attrs (edit mode only)
+- `_listEditable(path)` — same for list fields
+- `EDITOR_SCRIPT` — inline JS that wires contenteditable → API PATCH calls (edit mode only, stripped on publish)
 
 ### Template Data Contract
 
-All templates receive a normalized dict:
+All templates receive a `NormalizedData` object (from `normalize()`):
 
-```python
+```typescript
 {
-  # Profile
-  "name", "headline", "bio", "email", "phone", "location",
-  "profile_image",  # validated https URL or empty
-  "linkedin_url", "github_url", "portfolio_url", "twitter_url",
+  // Profile
+  name, headline, bio, email, phone, location,
+  profile_image,      // validated https URL or empty string
+  linkedin_url, github_url, portfolio_url, twitter_url,
 
-  # Sections
-  "skill_groups": [{"category": str, "skills": [str]}],
-  "experience": [...],
-  "projects": [...],
-  "education": [...],
-  "certifications": [...],
-  "achievements": [...],
-  "awards": [...],
-  "campaigns": [...],
-  "financial_modeling": [...],
-  "investment_portfolios": [...],
-  "design_philosophy": str,
-  "software_proficiency": [str],
+  // Sections
+  skill_groups:           [{ category: string, skills: string[] }],
+  experience:             [...],
+  projects:               [...],
+  education:              [...],
+  certifications:         [...],
+  achievements:           [...],
+  awards:                 [...],
+  campaigns:              [...],
+  financial_modeling:     [...],
+  investment_portfolios:  [...],
+  design_philosophy:      string,
+  software_proficiency:   string[],
+  custom_sections:        [{ section_id, title, display_type, items: [...] }],
 
-  # Metadata
-  "category": str,
-  "section_order": [str],   # custom order
-  "hidden_sections": [str], # omitted from render
+  // Metadata
+  category:         string,
+  section_order:    string[],   // custom display order
+  hidden_sections:  Set<string>, // omitted from render
+  edit_mode:        boolean,    // true in browser preview, false on Lambda publish
 }
 ```
+
+---
+
+## Portfolio Generator Lambda — Build Process
+
+> **This is the most important operational detail for template changes.**
+
+The Portfolio Generator Lambda (`src/lambdas/portfolio/handler.ts`) is a **Node.js Lambda** that imports templates from `./templates/index`. That `templates/` folder does **not** exist in the backend repo — it is assembled at build time by copying from the frontend repo.
+
+### Build Script
+
+```
+build-portfolio-lambda.sh
+```
+
+What it does:
+
+```
+AI-Portfolio-frontend/src/lib/templates/*.ts
+            ↓  cp (copied verbatim)
+dist/lambdas/portfolio_build/templates/
+            ↓  esbuild (bundle + transpile to Node 22)
+dist/lambdas/portfolio_build/index.js
+            ↓  python3 zipfile
+dist/lambdas/portfolio_generator.zip
+            ↓  terraform apply (uploads zip to Lambda)
+AWS Lambda: portfolio_generator
+            ↓  invoked on upload complete / publish
+S3: {userId}/{uploadId}/v{N}/index.html  ←  public portfolio
+```
+
+### When to Run the Build
+
+| Change Made | Build Required? | Terraform Apply Required? |
+|-------------|----------------|--------------------------|
+| Edit any `src/lib/templates/*.ts` | **YES** | **YES** |
+| Edit `src/lambdas/portfolio/handler.ts` | **YES** | **YES** |
+| Edit any other Python Lambda | No | YES |
+| Edit Terraform modules only | No | YES |
+| Edit frontend SvelteKit routes/components | No | No (frontend deploy only) |
+
+### Commands
+
+```bash
+# Always run these two together when templates or handler.ts change:
+bash build-portfolio-lambda.sh
+terraform apply
+```
+
+### What Breaks If You Skip the Build
+
+- The **edit preview** will show the updated template (it runs in the browser directly from the frontend source).
+- The **published portfolio** (what users share publicly) will use the **old Lambda zip** with the old templates — the changes are invisible on the live site.
+- Already-published portfolios at `/v1/`, `/v2/` etc. are immutable snapshots. Users must re-publish to get updated template styling applied.
 
 ---
 
@@ -630,18 +707,26 @@ All sensitive config (bucket names, DynamoDB table, SQS queue URL, Secrets Manag
 ## Deployment Flow
 
 ```
-1. terraform apply
-   → Creates all AWS resources
+1. Build portfolio Lambda (REQUIRED whenever templates or handler.ts change)
+   bash build-portfolio-lambda.sh
+   → Copies frontend templates into build dir
+   → Bundles with esbuild → dist/lambdas/portfolio_generator.zip
+
+2. terraform apply
+   → Creates/updates all AWS resources
+   → Uploads portfolio_generator.zip to Lambda
    → Outputs: API Gateway URL, CloudFront domain, Cognito pool IDs
 
-2. Frontend deployment
+3. Frontend deployment
    → Set VITE_API_BASE_URL, VITE_COGNITO_* env vars
    → npm run build → deploy to hosting (Vercel / Amplify / S3+CloudFront)
 
-3. Portfolio CDN
+4. Portfolio CDN
    → S3 bucket as CloudFront origin
    → Portfolios served at: https://{cloudfront-domain}/{userId}/v{N}/
 ```
+
+> **Rule:** Any change to `AI-Portfolio-frontend/src/lib/templates/*.ts` requires steps 1 + 2 to take effect on published portfolios. The edit preview updates immediately (it runs in the browser), but the Lambda that writes the public S3 HTML is only updated after build + deploy.
 
 ---
 

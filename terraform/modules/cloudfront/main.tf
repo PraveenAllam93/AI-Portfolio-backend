@@ -71,6 +71,14 @@ resource "aws_cloudfront_distribution" "portfolio" {
     default_ttl            = 3600     # 1 hour
     max_ttl                = 86400    # 24 hours
     compress               = true
+
+    # Lambda@Edge access gate: fires only on cache misses.
+    # Checks DynamoDB isLive + activeVersion before fetching from S3 origin.
+    lambda_function_association {
+      event_type   = "origin-request"
+      lambda_arn   = var.portfolio_access_gate_lambda_arn
+      include_body = false
+    }
   }
 
   # Custom error responses
