@@ -364,23 +364,68 @@ def _extract_pdf_text(content: bytes, correlation_id: str) -> str:
 
 
 def _extract_docx_text(content: bytes, correlation_id: str) -> str:
-    """Extract text from DOCX content using basic XML parsing."""
+    """Extract text from DOCX content by walking every document part.
+
+    A naive scan of word/document.xml for WordprocessingML runs (<w:t>) only
+    is fragile and silently returns EMPTY text for common real-world resumes:
+
+      * Two-column / sidebar templates (Canva, Novoresume, many designer CVs)
+        place large amounts of content inside DrawingML text boxes, where the
+        text lives in <a:t> (drawingml namespace) — NOT <w:t>. A <w:t>-only
+        pass extracts nothing, and the pipeline fails with "insufficient text".
+      * Name / contact details are frequently placed in the header
+        (word/header*.xml) or footer (word/footer*.xml), which is a separate
+        part never touched by a document.xml-only scan.
+
+    This walks the main document plus all headers/footers and collects text
+    from BOTH WordprocessingML (<w:t>) and DrawingML (<a:t>) nodes, inserting
+    paragraph/line/tab breaks so the output reads like the original document.
+    """
+    W_NS = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main'
+    A_NS = 'http://schemas.openxmlformats.org/drawingml/2006/main'
+    W_T, A_T = f'{{{W_NS}}}t', f'{{{A_NS}}}t'
+    W_TAB, W_BR, W_P = f'{{{W_NS}}}tab', f'{{{W_NS}}}br', f'{{{W_NS}}}p'
+    A_P = f'{{{A_NS}}}p'
     try:
         import io
         import zipfile
         import xml.etree.ElementTree as ET
 
+        parts_text: list[str] = []
         with zipfile.ZipFile(io.BytesIO(content)) as z:
-            xml_content = z.read('word/document.xml')
-            tree = ET.fromstring(xml_content)
-            ns = {
-                'w': (
-                    'http://schemas.openxmlformats.org/'
-                    'wordprocessingml/2006/main'
-                )
-            }
-            text_elements = tree.findall('.//w:t', ns)
-            return ' '.join(e.text for e in text_elements if e.text)
+            names = [
+                n for n in z.namelist()
+                if n.startswith('word/') and n.endswith('.xml')
+                and ('document' in n or 'header' in n or 'footer' in n)
+            ]
+            # Main document first, then headers/footers, for readable output.
+            names.sort(key=lambda n: (0 if 'document' in n else 1, n))
+
+            for name in names:
+                try:
+                    tree = ET.fromstring(z.read(name))
+                except ET.ParseError:
+                    # A malformed part must not abort the whole extraction.
+                    continue
+
+                buf: list[str] = []
+                # iter() yields elements in document order (parent before
+                # children), so a paragraph's break precedes its run text.
+                for el in tree.iter():
+                    tag = el.tag
+                    if tag == W_T or tag == A_T:
+                        if el.text:
+                            buf.append(el.text)
+                    elif tag == W_TAB:
+                        buf.append('\t')
+                    elif tag in (W_BR, W_P, A_P):
+                        buf.append('\n')
+
+                section = ''.join(buf).strip()
+                if section:
+                    parts_text.append(section)
+
+        return '\n'.join(parts_text)
     except Exception as e:
         _log_error(
             "DOCX extraction error",

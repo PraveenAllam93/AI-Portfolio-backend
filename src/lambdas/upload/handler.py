@@ -39,6 +39,14 @@ ALLOWED_MIME_TYPES = os.environ.get(
 DYNAMODB_TABLE = os.environ.get('DYNAMODB_TABLE')
 # Maximum concurrent pending/active uploads per user (abuse protection)
 MAX_ACTIVE_UPLOADS = int(os.environ.get('MAX_ACTIVE_UPLOADS', 5))
+# Paused / pre-AI states that wait on the user (or on an upload that may never
+# arrive) and have no natural timeout. Once older than STALE_UPLOAD_EXPIRY_HOURS
+# they are treated as abandoned and no longer count toward the active quota, so
+# forgotten uploads can never permanently consume a user's upload slots.
+STALE_UPLOAD_EXPIRY_HOURS = float(
+    os.environ.get('STALE_UPLOAD_EXPIRY_HOURS', 24)
+)
+_EXPIRABLE_STATUSES = {'PENDING_UPLOAD', 'AWAITING_SELECTION'}
 
 # Sentinel stored when category/templateId are deferred until the user confirms
 # the (auto-detected) profession after upload. start_generation overwrites these.
@@ -253,30 +261,67 @@ def lambda_handler(event, context):
         return _response(500, {'error': 'Internal server error'})
 
 
+def _parse_iso(value):
+    """Parse a stored ISO-8601 timestamp; return None if missing/unparseable."""
+    if not value:
+        return None
+    try:
+        dt = datetime.fromisoformat(value)
+    except (ValueError, TypeError):
+        return None
+    # Treat naive timestamps as UTC so comparisons never raise.
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt
+
+
+def _is_stale(item, now) -> bool:
+    """
+    True when a paused/pre-AI record has sat idle past the expiry window.
+    Only EXPIRABLE statuses can be stale — genuinely processing uploads
+    (QUEUED_FOR_AI / AI_PROCESSING / GENERATING) never expire.
+    """
+    if item.get('status') not in _EXPIRABLE_STATUSES:
+        return False
+    # Use the most recent activity timestamp; PENDING_UPLOAD has no updatedAt.
+    last_touched = _parse_iso(item.get('updatedAt')) or _parse_iso(
+        item.get('createdAt')
+    )
+    if last_touched is None:
+        return False  # no timestamp — count it to stay safe
+    age_hours = (now - last_touched).total_seconds() / 3600.0
+    return age_hours >= STALE_UPLOAD_EXPIRY_HOURS
+
+
 def _active_upload_count(user_id: str) -> int:
     """
     Count uploads for this user that are still in-flight.
     Queries the user's UPLOAD# records directly and checks the live status
     attribute — avoids relying on GSI1PK which is never updated after creation.
+
+    Paused/pre-AI states that wait on the user (PENDING_UPLOAD,
+    AWAITING_SELECTION) stop counting once older than STALE_UPLOAD_EXPIRY_HOURS,
+    so abandoned uploads can never permanently hold a user's quota slots.
     """
     in_flight = {
         'PENDING_UPLOAD', 'VALIDATING', 'VALIDATED',
         'EXTRACTING_TEXT', 'AWAITING_SELECTION', 'QUEUED_FOR_AI',
         'AI_PROCESSING', 'GENERATING',
     }
+    now = datetime.now(timezone.utc)
     table = dynamodb.Table(DYNAMODB_TABLE)
     count = 0
     query_kwargs = {
         'KeyConditionExpression': (
             Key('PK').eq(f'USER#{user_id}') & Key('SK').begins_with('UPLOAD#')
         ),
-        'ProjectionExpression': '#s',
+        'ProjectionExpression': '#s, createdAt, updatedAt',
         'ExpressionAttributeNames': {'#s': 'status'},
     }
     while True:
         resp = table.query(**query_kwargs)
         for item in resp.get('Items', []):
-            if item.get('status') in in_flight:
+            if item.get('status') in in_flight and not _is_stale(item, now):
                 count += 1
                 if count >= MAX_ACTIVE_UPLOADS:
                     return count

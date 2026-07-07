@@ -41,6 +41,14 @@ _RESUME_MIN_KEYWORD_HITS = 4
 # HTTP status codes from OpenAI that are transient and warrant SQS retry
 _TRANSIENT_HTTP_CODES = {429, 500, 502, 503, 504}
 
+# Max resume characters sent to the model. The old 8000-char cap silently
+# dropped everything past ~the first page or two — so sections/projects the user
+# appended near the end (a common edit) never reached the LLM, and the resulting
+# incomplete parse got cached. gpt-4o-mini has a 128k-token context window;
+# 40000 chars (~10k tokens) comfortably covers multi-page resumes while leaving
+# ample room for the schema + instructions + output. Overridable via env.
+_MAX_RESUME_CHARS = int(os.environ.get('MAX_RESUME_CHARS', 40000))
+
 # Cache OpenAI API key across warm invocations
 _openai_api_key = None
 
@@ -98,11 +106,17 @@ def lambda_handler(event, context):
             template_id = message.get('templateId', 'minimal')
             ats_failed = message.get('atsFailed', False)
 
-            # Check dedup cache: if the same content hash was already processed,
-            # reuse the parsed data instead of calling OpenAI again.
+            # Check dedup cache: if THIS user already processed the same content
+            # hash + category, reuse the parsed data instead of calling OpenAI
+            # again. Scoped per-user: a different account must NEVER be served
+            # another user's parsed resume — that both leaks PII across accounts
+            # and freezes one account's (possibly stale/truncated) parse onto
+            # every future upload of the same file.
             parsed_data, portfolio_content = None, {}
             if content_hash:
-                parsed_data, portfolio_content = _get_cached_result(content_hash, category, correlation_id)
+                parsed_data, portfolio_content = _get_cached_result(
+                    user_id, content_hash, category, correlation_id
+                )
 
             if parsed_data:
                 _log_info(
@@ -296,21 +310,28 @@ def _verify_is_resume(resume_text: str, api_key: str, correlation_id: str) -> bo
         return True  # Fail open — don't block if we can't verify
 
 
-def _get_cached_result(content_hash: str, category: str, correlation_id: str) -> tuple[dict | None, dict]:
-    """Fetch previously parsed data by content hash + category.
+def _get_cached_result(user_id: str, content_hash: str, category: str, correlation_id: str) -> tuple[dict | None, dict]:
+    """Fetch this user's previously parsed data by content hash + category.
 
-    The cache is keyed by BOTH the resume content hash and the profession
-    category. The same resume parsed as e.g. 'finance' produces a different
-    schema (financial_modeling, investment_portfolios) than 'software_engineer'
-    (projects, tech_stack). Keying on hash alone would serve a finance parse
-    back into a software-engineer portfolio. Returns (None, {}) on miss.
+    The cache is keyed by the resume content hash, the profession category, AND
+    the user:
+      * category — the same resume parsed as e.g. 'finance' produces a different
+        schema (financial_modeling, investment_portfolios) than
+        'software_engineer' (projects, tech_stack); keying on hash alone would
+        serve a finance parse back into a software-engineer portfolio.
+      * user_id — one account must NEVER read another account's parsed resume.
+        A cross-user cache leaks PII AND, if the first parse ever missed content
+        (e.g. truncation), freezes that gap onto every account that later
+        uploads the same file. This was the cause of "edits not reflected, and
+        a different account showed the same stale result".
+    Returns (None, {}) on miss.
     """
     try:
         table = dynamodb.Table(DYNAMODB_TABLE)
         resp = table.get_item(
             Key={
                 'PK': f'CONTENT#{content_hash}',
-                'SK': f'PARSED#{category}',
+                'SK': f'PARSED#{user_id}#{category}',
             },
             ProjectionExpression='parsedData, portfolioContent',
         )
@@ -341,12 +362,15 @@ def _save_cached_result(
     portfolio_content: dict,
     correlation_id: str,
 ) -> None:
-    """Persist parsed result keyed by content hash + category for future dedup hits."""
+    """Persist parsed result keyed by content hash + user + category for future
+    dedup hits. Scoped per-user so a re-upload of the SAME file by the SAME user
+    skips a redundant OpenAI call, without ever exposing this parse to another
+    account (see _get_cached_result)."""
     try:
         table = dynamodb.Table(DYNAMODB_TABLE)
         table.put_item(Item={
             'PK': f'CONTENT#{content_hash}',
-            'SK': f'PARSED#{category}',
+            'SK': f'PARSED#{user_id}#{category}',
             'category': category,
             'parsedBy': user_id,
             'parsedData': json.dumps(parsed_data),
@@ -440,7 +464,7 @@ TASK 2 — "portfolio": Generate engaging portfolio website content:
 }}
 
 Resume text:
-{resume_text[:8000]}
+{resume_text[:_MAX_RESUME_CHARS]}
 
 Return ONLY the JSON object with "parsed" and "portfolio" keys. No additional text."""
 
@@ -458,7 +482,10 @@ Return ONLY the JSON object with "parsed" and "portfolio" keys. No additional te
                 {"role": "user", "content": prompt},
             ],
             "temperature": 0.3,
-            "max_tokens": 3500,
+            # Ceiling only (billed on actual output). Raised from 3500 so a fuller
+            # resume's parse isn't truncated into invalid JSON now that we send
+            # the whole document rather than the first 8000 chars.
+            "max_tokens": 8000,
         }).encode('utf-8')
 
         req = urllib.request.Request(

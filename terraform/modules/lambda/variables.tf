@@ -113,6 +113,12 @@ variable "presigned_url_expiry_seconds" {
   default     = 300
 }
 
+variable "stale_upload_expiry_hours" {
+  description = "Hours after which a paused/pre-AI upload (PENDING_UPLOAD, AWAITING_SELECTION) is treated as abandoned and stops counting toward the per-user active-upload quota"
+  type        = number
+  default     = 24
+}
+
 variable "allowed_file_extensions" {
   description = "Allowed file extensions"
   type        = list(string)

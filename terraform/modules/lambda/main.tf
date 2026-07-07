@@ -429,6 +429,7 @@ resource "aws_lambda_function" "get_presigned_url" {
       ALLOWED_MIME_TYPES           = join(",", var.allowed_mime_types)
       DYNAMODB_TABLE               = var.dynamodb_table_name
       ENVIRONMENT                  = var.environment
+      STALE_UPLOAD_EXPIRY_HOURS    = tostring(var.stale_upload_expiry_hours)
     }
   }
 
