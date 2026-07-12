@@ -53,12 +53,15 @@ STATUS_MESSAGES = {
     'INVALID_DOCUMENT': 'Document is not a resume',
     'GENERATING': 'Generating your portfolio...',
     'COMPLETE': 'Portfolio is ready!',
+    # Guest ("Try for free") portfolios stop here — a private preview that is
+    # not publicly live until the guest creates an account and publishes.
+    'DRAFT_READY': 'Your portfolio preview is ready!',
     'FAILED': 'Processing failed',
     'CANCELLED': 'Upload cancelled',
 }
 
 # Terminal states — frontend should stop polling
-TERMINAL_STATES = {'COMPLETE', 'REJECTED', 'AI_FAILED', 'FAILED', 'INVALID_DOCUMENT', 'CANCELLED'}
+TERMINAL_STATES = {'COMPLETE', 'DRAFT_READY', 'REJECTED', 'AI_FAILED', 'FAILED', 'INVALID_DOCUMENT', 'CANCELLED'}
 
 # Failure states — frontend can offer a retry (CANCELLED is terminal but not a failure)
 FAILURE_STATES = {'REJECTED', 'AI_FAILED', 'FAILED', 'INVALID_DOCUMENT'}
@@ -83,6 +86,7 @@ STATUS_PROGRESS = {
     'AI_COMPLETE': 80,
     'GENERATING': 90,
     'COMPLETE': 100,
+    'DRAFT_READY': 100,
     'REJECTED': 15,
     'AI_FAILED': 60,
     'INVALID_DOCUMENT': 60,
@@ -186,10 +190,11 @@ def lambda_handler(event, context):
             except (TypeError, ValueError):
                 result['predictedConfidence'] = 0
 
-        # Add portfolio URL if complete
-        if status == 'COMPLETE':
+        # Add portfolio URL if complete (or a guest draft preview is ready)
+        if status in ('COMPLETE', 'DRAFT_READY'):
             result['portfolioPath'] = item.get('portfolioPath')
             result['canRetry'] = False
+            result['isDraft'] = status == 'DRAFT_READY'
 
         # Add failure details if failed — never expose raw internal errors to the client
         if status in FAILURE_STATES:

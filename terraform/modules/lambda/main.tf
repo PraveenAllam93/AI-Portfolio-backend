@@ -853,11 +853,12 @@ resource "aws_lambda_function" "start_generation" {
 
   environment {
     variables = {
-      DYNAMODB_TABLE   = var.dynamodb_table_name
-      VALIDATED_BUCKET = var.validated_bucket_name
-      PROCESSING_QUEUE = var.processing_queue_url
-      ALLOWED_ORIGIN   = var.allowed_origin
-      ENVIRONMENT      = var.environment
+      DYNAMODB_TABLE     = var.dynamodb_table_name
+      VALIDATED_BUCKET   = var.validated_bucket_name
+      PROCESSING_QUEUE   = var.processing_queue_url
+      ALLOWED_ORIGIN     = var.allowed_origin
+      GUEST_EMAIL_DOMAIN = var.guest_email_domain
+      ENVIRONMENT        = var.environment
     }
   }
 
@@ -2099,4 +2100,274 @@ resource "aws_lambda_function" "delete_portfolio" {
     Name     = "${var.name_prefix}-delete-portfolio"
     Function = "Delete an entire portfolio and all its versions"
   })
+}
+
+# =============================================================================
+# CLAIM GUEST PORTFOLIO
+# POST /guest/claim — migrate an anonymous guest's data onto the real account
+# that just signed up, publish the chosen portfolio, and delete the guest.
+# This is the ONLY Lambda permitted cross-user DynamoDB access; it gates every
+# operation on the guest-domain check performed in code.
+# =============================================================================
+
+resource "aws_iam_role" "claim_guest" {
+  name               = "${var.name_prefix}-claim-guest-role"
+  assume_role_policy = data.aws_iam_policy_document.lambda_assume_role.json
+  tags               = var.tags
+}
+
+resource "aws_iam_role_policy" "claim_guest_logs" {
+  name   = "cloudwatch-logs"
+  role   = aws_iam_role.claim_guest.id
+  policy = data.aws_iam_policy_document.cloudwatch_logs.json
+}
+
+resource "aws_iam_role_policy" "claim_guest_dynamodb" {
+  name = "dynamodb-migrate"
+  role = aws_iam_role.claim_guest.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      # No LeadingKeys condition: migration copies USER#{guest} -> USER#{real}.
+      # Cross-user access is gated in code by the guest-domain ownership check.
+      Sid    = "MigrateGuestRecords"
+      Effect = "Allow"
+      Action = [
+        "dynamodb:Query",
+        "dynamodb:GetItem",
+        "dynamodb:PutItem",
+        "dynamodb:UpdateItem",
+        "dynamodb:DeleteItem",
+      ]
+      Resource = [
+        var.dynamodb_table_arn,
+        "${var.dynamodb_table_arn}/index/*",
+      ]
+    }]
+  })
+}
+
+resource "aws_iam_role_policy" "claim_guest_s3" {
+  name = "s3-migrate"
+  role = aws_iam_role.claim_guest.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid    = "ListPipelineBuckets"
+        Effect = "Allow"
+        Action = ["s3:ListBucket"]
+        Resource = [
+          var.portfolio_bucket_arn,
+          var.validated_bucket_arn,
+          var.quarantine_bucket_arn,
+        ]
+      },
+      {
+        Sid    = "CopyDeletePipelineObjects"
+        Effect = "Allow"
+        Action = ["s3:GetObject", "s3:PutObject", "s3:DeleteObject"]
+        Resource = [
+          "${var.portfolio_bucket_arn}/*",
+          "${var.validated_bucket_arn}/*",
+          "${var.quarantine_bucket_arn}/*",
+        ]
+      },
+    ]
+  })
+}
+
+resource "aws_iam_role_policy" "claim_guest_invoke" {
+  name = "lambda-invoke-portfolio-generator"
+  role = aws_iam_role.claim_guest.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Sid      = "InvokePortfolioGenerator"
+      Effect   = "Allow"
+      Action   = ["lambda:InvokeFunction"]
+      Resource = "arn:aws:lambda:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:function:${var.name_prefix}-portfolio-generator"
+    }]
+  })
+}
+
+resource "aws_iam_role_policy" "claim_guest_cognito" {
+  name = "cognito-guest-admin"
+  role = aws_iam_role.claim_guest.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Sid      = "InspectAndDeleteGuest"
+      Effect   = "Allow"
+      Action   = ["cognito-idp:AdminGetUser", "cognito-idp:AdminDeleteUser"]
+      Resource = var.user_pool_arn
+    }]
+  })
+}
+
+resource "aws_lambda_function" "claim_guest" {
+  filename         = data.archive_file.get_portfolio.output_path
+  function_name    = "${var.name_prefix}-claim-guest"
+  role             = aws_iam_role.claim_guest.arn
+  handler          = "claim_guest.lambda_handler"
+  source_code_hash = data.archive_file.get_portfolio.output_base64sha256
+  runtime          = "python3.12"
+  timeout          = 60  # DynamoDB re-key + S3 copy across multiple uploads
+  memory_size      = 256
+
+  reserved_concurrent_executions = var.reserved_concurrency
+
+  environment {
+    variables = {
+      DYNAMODB_TABLE        = var.dynamodb_table_name
+      PORTFOLIO_BUCKET      = var.portfolio_bucket_name
+      VALIDATED_BUCKET      = var.validated_bucket_name
+      QUARANTINE_BUCKET     = var.quarantine_bucket_name
+      PORTFOLIO_LAMBDA_NAME = "${var.name_prefix}-portfolio-generator"
+      USER_POOL_ID          = var.user_pool_id
+      GUEST_EMAIL_DOMAIN    = var.guest_email_domain
+      ALLOWED_ORIGIN        = var.allowed_origin
+      ENVIRONMENT           = var.environment
+    }
+  }
+
+  tags = merge(var.tags, {
+    Name     = "${var.name_prefix}-claim-guest"
+    Function = "Migrate guest portfolio to a real account and publish"
+  })
+}
+
+# =============================================================================
+# GUEST REAPER
+# Scheduled (EventBridge) deletion of abandoned guest accounts older than the
+# guest TTL, along with all their DynamoDB + S3 data.
+# =============================================================================
+
+resource "aws_iam_role" "guest_reaper" {
+  name               = "${var.name_prefix}-guest-reaper-role"
+  assume_role_policy = data.aws_iam_policy_document.lambda_assume_role.json
+  tags               = var.tags
+}
+
+resource "aws_iam_role_policy" "guest_reaper_logs" {
+  name   = "cloudwatch-logs"
+  role   = aws_iam_role.guest_reaper.id
+  policy = data.aws_iam_policy_document.cloudwatch_logs.json
+}
+
+resource "aws_iam_role_policy" "guest_reaper_cognito" {
+  name = "cognito-list-delete-guests"
+  role = aws_iam_role.guest_reaper.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Sid      = "ListAndDeleteGuests"
+      Effect   = "Allow"
+      Action   = ["cognito-idp:ListUsers", "cognito-idp:AdminDeleteUser"]
+      Resource = var.user_pool_arn
+    }]
+  })
+}
+
+resource "aws_iam_role_policy" "guest_reaper_dynamodb" {
+  name = "dynamodb-delete-guest"
+  role = aws_iam_role.guest_reaper.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Sid      = "DeleteGuestRecords"
+      Effect   = "Allow"
+      Action   = ["dynamodb:Query", "dynamodb:DeleteItem"]
+      Resource = var.dynamodb_table_arn
+    }]
+  })
+}
+
+resource "aws_iam_role_policy" "guest_reaper_s3" {
+  name = "s3-delete-guest"
+  role = aws_iam_role.guest_reaper.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid    = "ListPipelineBuckets"
+        Effect = "Allow"
+        Action = ["s3:ListBucket"]
+        Resource = [
+          var.portfolio_bucket_arn,
+          var.validated_bucket_arn,
+          var.quarantine_bucket_arn,
+        ]
+      },
+      {
+        Sid    = "DeletePipelineObjects"
+        Effect = "Allow"
+        Action = ["s3:DeleteObject"]
+        Resource = [
+          "${var.portfolio_bucket_arn}/*",
+          "${var.validated_bucket_arn}/*",
+          "${var.quarantine_bucket_arn}/*",
+        ]
+      },
+    ]
+  })
+}
+
+data "archive_file" "guest_reaper" {
+  type        = "zip"
+  source_dir  = "${path.module}/../../../src/lambdas/guest_reaper"
+  output_path = "${path.module}/../../../dist/lambdas/guest_reaper.zip"
+}
+
+resource "aws_lambda_function" "guest_reaper" {
+  filename         = data.archive_file.guest_reaper.output_path
+  function_name    = "${var.name_prefix}-guest-reaper"
+  role             = aws_iam_role.guest_reaper.arn
+  handler          = "handler.lambda_handler"
+  source_code_hash = data.archive_file.guest_reaper.output_base64sha256
+  runtime          = "python3.12"
+  timeout          = 300  # may iterate many stale guests in one run
+  memory_size      = 256
+
+  reserved_concurrent_executions = var.reserved_concurrency
+
+  environment {
+    variables = {
+      USER_POOL_ID       = var.user_pool_id
+      DYNAMODB_TABLE     = var.dynamodb_table_name
+      PORTFOLIO_BUCKET   = var.portfolio_bucket_name
+      VALIDATED_BUCKET   = var.validated_bucket_name
+      QUARANTINE_BUCKET  = var.quarantine_bucket_name
+      GUEST_EMAIL_DOMAIN = var.guest_email_domain
+      GUEST_TTL_HOURS    = tostring(var.guest_ttl_hours)
+      ENVIRONMENT        = var.environment
+    }
+  }
+
+  tags = merge(var.tags, {
+    Name     = "${var.name_prefix}-guest-reaper"
+    Function = "Delete abandoned guest accounts and their data"
+  })
+}
+
+# Run the reaper hourly. The Lambda itself enforces the TTL grace window.
+resource "aws_cloudwatch_event_rule" "guest_reaper" {
+  name                = "${var.name_prefix}-guest-reaper-schedule"
+  description         = "Periodically delete abandoned guest accounts"
+  schedule_expression = "rate(1 hour)"
+  tags                = var.tags
+}
+
+resource "aws_cloudwatch_event_target" "guest_reaper" {
+  rule      = aws_cloudwatch_event_rule.guest_reaper.name
+  target_id = "guest-reaper"
+  arn       = aws_lambda_function.guest_reaper.arn
+}
+
+resource "aws_lambda_permission" "guest_reaper_events" {
+  statement_id  = "AllowEventBridgeInvoke"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.guest_reaper.function_name
+  principal     = "events.amazonaws.com"
+  source_arn    = aws_cloudwatch_event_rule.guest_reaper.arn
 }

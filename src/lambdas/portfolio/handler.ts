@@ -61,6 +61,11 @@ interface LambdaEvent {
 	userId?: string;
 	uploadId?: string;
 	target?: string;
+	// Set on the INITIAL guest draft build (from ai_processing). Tells the
+	// generator to finalize the upload record to DRAFT_READY / portfolio DRAFT
+	// after rendering the draft — as opposed to an edit rebuild (patch_portfolio)
+	// which writes the draft silently and must not touch the upload status.
+	finalizeUpload?: boolean;
 	Records?: Array<{
 		eventName?: string;
 		dynamodb?: {
@@ -152,6 +157,7 @@ export async function lambdaHandler(event: LambdaEvent, context: LambdaContext):
 				: rawSectionOrder;
 		const hiddenSections = (item.hiddenSections as string[] | undefined) ?? [];
 		const templateOverrides = (item.templateOverrides as Record<string, number> | undefined) ?? {};
+		const fieldVisibility = (item.fieldVisibility as Record<string, boolean> | undefined) ?? {};
 		const target = event.target ?? 'publish';
 		// Increment version counter for each new publish so versions never overwrite each other.
 		// Draft target always uses the fixed /draft path and does not bump the counter.
@@ -169,6 +175,7 @@ export async function lambdaHandler(event: LambdaEvent, context: LambdaContext):
 			sectionOrder,
 			hiddenSections,
 			templateOverrides,
+			fieldVisibility,
 			true // publishMode — strips editor JS + editable attrs, injects CSP
 		);
 
@@ -266,18 +273,54 @@ export async function lambdaHandler(event: LambdaEvent, context: LambdaContext):
 					});
 				}
 			}
+		} else if (event.finalizeUpload && uploadId) {
+			// Initial guest draft build: the draft HTML is written but nothing is
+			// published. Mark the upload DRAFT_READY (terminal for the guest wizard
+			// — the frontend treats it like COMPLETE and opens the editor) and the
+			// portfolio DRAFT (isLive stays false, set by ai_processing). Edit
+			// rebuilds from patch_portfolio do NOT set finalizeUpload, so they
+			// leave these statuses untouched.
+			await dynamodb.send(
+				new UpdateItemCommand({
+					TableName: DYNAMODB_TABLE,
+					Key: marshall({ PK: `USER#${userId}`, SK: `PORTFOLIO#${uploadId}` }),
+					UpdateExpression: 'SET #status = :status, portfolioPath = :path, updatedAt = :updatedAt',
+					ExpressionAttributeNames: { '#status': 'status' },
+					ExpressionAttributeValues: marshall({
+						':status': 'DRAFT',
+						':path': basePath,
+						':updatedAt': now,
+					}),
+				})
+			);
+
+			await dynamodb.send(
+				new UpdateItemCommand({
+					TableName: DYNAMODB_TABLE,
+					Key: marshall({ PK: `USER#${userId}`, SK: `UPLOAD#${uploadId}` }),
+					UpdateExpression: 'SET #status = :status, portfolioPath = :path, updatedAt = :updatedAt',
+					ExpressionAttributeNames: { '#status': 'status' },
+					ExpressionAttributeValues: marshall({
+						':status': 'DRAFT_READY',
+						':path': basePath,
+						':updatedAt': now,
+					}),
+				})
+			);
 		}
 
-		log('INFO', 'Portfolio published', {
+		log('INFO', 'Portfolio generated', {
 			correlationId,
 			userId,
 			uploadId,
 			portfolioPath: basePath,
+			target,
+			finalizeUpload: Boolean(event.finalizeUpload),
 		});
 
 		return {
 			statusCode: 200,
-			body: JSON.stringify({ path: basePath, status: 'PUBLISHED' }),
+			body: JSON.stringify({ path: basePath, status: target === 'draft' ? (event.finalizeUpload ? 'DRAFT_READY' : 'DRAFT') : 'PUBLISHED' }),
 		};
 	} catch (err) {
 		log('ERROR', 'Portfolio generation error', {

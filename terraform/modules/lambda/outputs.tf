@@ -322,3 +322,11 @@ output "get_portfolio_preview_url_arn" {
 output "get_portfolio_preview_url_invoke_arn" {
   value = aws_lambda_function.get_portfolio_preview_url.invoke_arn
 }
+
+# Claim Guest Portfolio Lambda
+output "claim_guest_arn" {
+  value = aws_lambda_function.claim_guest.arn
+}
+output "claim_guest_invoke_arn" {
+  value = aws_lambda_function.claim_guest.invoke_arn
+}

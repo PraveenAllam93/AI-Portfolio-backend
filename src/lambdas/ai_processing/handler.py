@@ -105,6 +105,10 @@ def lambda_handler(event, context):
             category = message.get('category', 'software_engineer')
             template_id = message.get('templateId', 'minimal')
             ats_failed = message.get('atsFailed', False)
+            # Anonymous "Try for free" guests: generate a private DRAFT only,
+            # never auto-publish to a public URL. Set by start_generation from
+            # the verified email claim.
+            is_guest = bool(message.get('isGuest', False))
 
             # Check dedup cache: if THIS user already processed the same content
             # hash + category, reuse the parsed data instead of calling OpenAI
@@ -189,7 +193,8 @@ def lambda_handler(event, context):
             })
 
             _trigger_portfolio_generation(
-                user_id, upload_id, parsed_data, portfolio_content, category, template_id
+                user_id, upload_id, parsed_data, portfolio_content, category,
+                template_id, is_guest
             )
 
             _log_info(
@@ -545,8 +550,19 @@ def _trigger_portfolio_generation(
     portfolio_content: dict,
     category: str = 'software_engineer',
     template_id: str = 'minimal',
+    is_guest: bool = False,
 ) -> None:
-    """Store portfolio data and invoke portfolio generator Lambda."""
+    """Store portfolio data and invoke portfolio generator Lambda.
+
+    For a normal (logged-in) user the first generation auto-publishes: the
+    generator renders to the live v1 path and marks the portfolio LIVE.
+
+    For an anonymous guest we generate a private DRAFT only (isLive=False) and
+    invoke the generator with target='draft' + finalizeUpload so the upload
+    record lands on DRAFT_READY instead of COMPLETE. The portfolio only becomes
+    public later, when the guest creates a real account and the claim step
+    re-runs generation with target='publish' under the real user.
+    """
     table = dynamodb.Table(DYNAMODB_TABLE)
     table.put_item(Item={
         'PK': f'USER#{user_id}',
@@ -558,7 +574,9 @@ def _trigger_portfolio_generation(
         'parsedData': parsed_data,
         'portfolioContent': portfolio_content,
         'version': 0,
-        'isLive': True,
+        # Guests are NOT live until they claim the portfolio with a real account.
+        'isLive': not is_guest,
+        'isGuest': is_guest,
         'createdAt': datetime.now(timezone.utc).isoformat(),
         'status': 'GENERATING',
     })
@@ -569,18 +587,26 @@ def _trigger_portfolio_generation(
     _update_status(user_id, upload_id, 'GENERATING')
 
     if PORTFOLIO_LAMBDA_NAME:
+        payload = {
+            'userId': user_id,
+            'uploadId': upload_id,
+        }
+        if is_guest:
+            # Draft-only render; finalizeUpload tells the generator this is the
+            # initial build (not an edit rebuild) so it should mark the upload
+            # DRAFT_READY / portfolio DRAFT when done.
+            payload['target'] = 'draft'
+            payload['finalizeUpload'] = True
         lambda_client.invoke(
             FunctionName=PORTFOLIO_LAMBDA_NAME,
             InvocationType='Event',  # async
-            Payload=json.dumps({
-                'userId': user_id,
-                'uploadId': upload_id,
-            }),
+            Payload=json.dumps(payload),
         )
         _log_info(
             "Portfolio generation triggered",
             userId=user_id,
             uploadId=upload_id,
+            isGuest=is_guest,
         )
 
 

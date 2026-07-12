@@ -303,10 +303,13 @@ _ALL_SECTION_KEYS = {
     'custom_sections',
 }
 
-# Allowed keys inside the templateOverrides map and their max value
+# Allowed stat-field keys. Covers every template's overridable stat (numeric
+# override in templateOverrides) AND its show/hide flag (fieldVisibility). Must
+# stay in sync with TEMPLATE_FIELDS in the frontend templates/index.ts.
 _ALLOWED_OVERRIDE_KEYS: frozenset = frozenset({
     'years_experience', 'projects_count', 'certifications_count',
     'achievements_count', 'roles_count', 'total_skills',
+    'campaigns_count', 'avg_roas', 'clients_count',
 })
 
 
@@ -374,8 +377,14 @@ def _handle_template_overrides_patch(data: object, path_user_id: str, upload_id:
 
 def _handle_config_patch(data: object, path_user_id: str, upload_id: str, correlation_id: str) -> dict:
     """
-    Update templateId, sectionOrder and/or hiddenSections at the record root level.
-    data = { templateId?: string, sectionOrder?: string[], hiddenSections?: string[] }
+    Update templateId, sectionOrder, hiddenSections and/or fieldVisibility at the
+    record root level.
+    data = {
+        templateId?: string,
+        sectionOrder?: string[],
+        hiddenSections?: string[],
+        fieldVisibility?: { [statKey: string]: bool },
+    }
     """
     if not isinstance(data, dict):
         return _response(400, {'error': 'config data must be an object'})
@@ -413,8 +422,23 @@ def _handle_config_patch(data: object, path_user_id: str, upload_id: str, correl
         expr_names['#hiddenSections'] = 'hiddenSections'
         expr_values[':hiddenSections'] = hidden
 
+    if 'fieldVisibility' in data:
+        field_vis = data['fieldVisibility']
+        if not isinstance(field_vis, dict):
+            return _response(400, {'error': 'fieldVisibility must be an object'})
+        sanitized_fv: dict = {}
+        for k, val in field_vis.items():
+            if k not in _ALLOWED_OVERRIDE_KEYS:
+                continue  # drop unknown stat keys silently
+            if not isinstance(val, bool):
+                return _response(400, {'error': f'fieldVisibility.{k} must be a boolean'})
+            sanitized_fv[k] = val
+        update_parts.append('#fieldVisibility = :fieldVisibility')
+        expr_names['#fieldVisibility'] = 'fieldVisibility'
+        expr_values[':fieldVisibility'] = sanitized_fv
+
     if not update_parts:
-        return _response(400, {'error': 'config data must include templateId, sectionOrder, or hiddenSections'})
+        return _response(400, {'error': 'config data must include templateId, sectionOrder, hiddenSections, or fieldVisibility'})
 
     try:
         table = dynamodb.Table(DYNAMODB_TABLE)

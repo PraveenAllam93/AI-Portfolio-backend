@@ -32,6 +32,13 @@ DYNAMODB_TABLE = os.environ.get('DYNAMODB_TABLE')
 VALIDATED_BUCKET = os.environ.get('VALIDATED_BUCKET')
 PROCESSING_QUEUE = os.environ.get('PROCESSING_QUEUE')
 
+# Anonymous "Try for free" guests are real Cognito users whose email lives on
+# this reserved, non-routable domain (created by the frontend guest-session
+# endpoint). Their portfolios are generated as a private DRAFT only — never
+# auto-published to a public URL — until they create a real account. Detection
+# is by the verified `email` claim, so a client cannot spoof guest/non-guest.
+GUEST_EMAIL_DOMAIN = os.environ.get('GUEST_EMAIL_DOMAIN', 'guest.aifolio.internal')
+
 # Allowlists — keep in sync with upload/handler.py and patch_portfolio.py
 # (see memory: adding a profession/template touches every backend allowlist).
 ALLOWED_CATEGORIES = {
@@ -61,14 +68,20 @@ def lambda_handler(event, context):
     correlation_id = context.aws_request_id if context else 'local'
     try:
         upload_id = (event.get('pathParameters') or {}).get('uploadId')
-        user_id = event['requestContext']['authorizer']['claims']['sub']
+        claims = event['requestContext']['authorizer']['claims']
+        user_id = claims['sub']
+        # Guests get a draft-only pipeline (no auto-publish). Derived from the
+        # verified email claim — never from client input.
+        email = (claims.get('email') or '').lower()
+        is_guest = email.endswith('@' + GUEST_EMAIL_DOMAIN)
 
         body = json.loads(event.get('body') or '{}')
         category = body.get('category', '')
         template_id = body.get('templateId', '')
 
         _log('INFO', 'Start generation requested', correlationId=correlation_id,
-             userId=user_id, uploadId=upload_id, category=category, templateId=template_id)
+             userId=user_id, uploadId=upload_id, category=category,
+             templateId=template_id, isGuest=is_guest)
 
         if not upload_id:
             return _response(400, {'error': 'Missing uploadId'})
@@ -142,6 +155,7 @@ def lambda_handler(event, context):
                 'templateId': template_id,
                 'contentHash': content_hash,
                 'atsFailed': ats_failed,
+                'isGuest': is_guest,
                 'timestamp': datetime.now(timezone.utc).isoformat(),
             }),
             MessageAttributes={

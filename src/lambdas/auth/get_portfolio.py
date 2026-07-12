@@ -108,6 +108,7 @@ def lambda_handler(event, context):
             'sectionOrder': item.get('sectionOrder'),
             'hiddenSections': item.get('hiddenSections'),
             'templateOverrides': item.get('templateOverrides'),
+            'fieldVisibility': item.get('fieldVisibility'),
         })
 
     except Exception as e:

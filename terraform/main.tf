@@ -262,6 +262,9 @@ module "api_gateway" {
   get_portfolio_preview_url_lambda_arn        = module.lambda.get_portfolio_preview_url_arn
   get_portfolio_preview_url_lambda_invoke_arn = module.lambda.get_portfolio_preview_url_invoke_arn
 
+  claim_guest_lambda_arn        = module.lambda.claim_guest_arn
+  claim_guest_lambda_invoke_arn = module.lambda.claim_guest_invoke_arn
+
   tags = local.common_tags
 }
 

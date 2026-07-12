@@ -254,3 +254,12 @@ variable "get_portfolio_preview_url_lambda_invoke_arn" {
   description = "Invoke ARN of the get portfolio preview URL Lambda"
   type        = string
 }
+
+variable "claim_guest_lambda_arn" {
+  description = "ARN of the claim guest portfolio Lambda"
+  type        = string
+}
+variable "claim_guest_lambda_invoke_arn" {
+  description = "Invoke ARN of the claim guest portfolio Lambda"
+  type        = string
+}

@@ -52,7 +52,8 @@
       "Read(///wsl.localhost/Ubuntu/home/prudvi/projects/AI-Portfolio-frontend/src/routes/app/portfolio/[userId]/**)",
       "Read(///wsl.localhost/Ubuntu/home/prudvi/**)",
       "Read(///wsl.localhost/Ubuntu/home/prudvi/projects/AI-Portfolio-backend/src/**)",
-      "Read(///wsl.localhost/Ubuntu/home/prudvi/projects/AI-Portfolio-backend/.claude/skills/**)"
+      "Read(///wsl.localhost/Ubuntu/home/prudvi/projects/AI-Portfolio-backend/.claude/skills/**)",
+      "PowerShell($n = \\(Get-Command node -ErrorAction SilentlyContinue\\); if \\($n\\) { node --version } else { \"no-node\" }; $p = \\(Get-Command npm -ErrorAction SilentlyContinue\\); if \\($p\\) { npm --version } else { \"no-npm\" })"
     ],
     "additionalDirectories": [
       "\\\\wsl.localhost\\Ubuntu\\home\\prudvi\\projects\\AI-Portfolio-frontend\\src\\routes\\api\\portfolio\\[userId]",
@@ -66,7 +67,9 @@
       "\\home\\prudvi\\projects\\AI-Portfolio-frontend\\src\\routes\\app\\portfolio\\[userId]\\edit",
       "\\\\wsl.localhost\\Ubuntu\\home\\prudvi\\projects\\AI-Portfolio-frontend\\src\\routes\\app\\portfolio\\[userId]\\edit",
       "\\home\\prudvi\\projects\\AI-Portfolio-frontend\\src\\lib\\templates",
-      "\\\\wsl.localhost\\Ubuntu\\home\\prudvi\\projects\\AI-Portfolio-frontend\\src\\lib\\templates"
+      "\\\\wsl.localhost\\Ubuntu\\home\\prudvi\\projects\\AI-Portfolio-frontend\\src\\lib\\templates",
+      "\\\\wsl.localhost\\Ubuntu\\home\\prudvi\\projects\\AI-Portfolio-frontend\\src\\routes\\app\\portfolio\\[userId]\\[uploadId]\\edit",
+      "\\\\wsl.localhost\\Ubuntu\\home\\prudvi\\projects\\AI-Portfolio-frontend\\src\\routes\\api\\auth\\logout"
     ]
   }
 }

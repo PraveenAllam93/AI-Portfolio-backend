@@ -180,6 +180,19 @@ variable "allowed_origin" {
   default     = "*"
 }
 
+# Anonymous "Try for free" guests
+variable "guest_email_domain" {
+  description = "Reserved, non-routable email domain used for anonymous guest Cognito users (guest-<uuid>@<domain>). Must match the frontend GUEST_EMAIL_DOMAIN."
+  type        = string
+  default     = "guest.aifolio.internal"
+}
+
+variable "guest_ttl_hours" {
+  description = "Hours after which an abandoned (never-converted) guest account is deleted by the reaper"
+  type        = number
+  default     = 72
+}
+
 variable "tags" {
   description = "Tags to apply to resources"
   type        = map(string)
