@@ -125,10 +125,12 @@ def lambda_handler(event, context):
         item = response['Item']
         status = item.get('status', 'UNKNOWN')
 
-        # If AI processing Lambda was killed (timeout/crash), it can never update
-        # its own status. Detect stale AI_PROCESSING and surface it as AI_FAILED
-        # so the frontend stops polling instead of waiting forever.
-        if status == 'AI_PROCESSING':
+        # If AI processing Lambda was killed (timeout/crash) — or the SQS message
+        # was never delivered to it (event-source throttling/outage) — the record
+        # can never update its own status. Detect a stale QUEUED_FOR_AI/AI_PROCESSING
+        # and surface it as AI_FAILED so the frontend stops polling instead of
+        # waiting forever.
+        if status in ('AI_PROCESSING', 'QUEUED_FOR_AI'):
             updated_at_str = item.get('updatedAt')
             if updated_at_str:
                 try:

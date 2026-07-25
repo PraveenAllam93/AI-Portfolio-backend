@@ -148,7 +148,7 @@ _CATEGORY_STYLES = {
     ),
 }
 
-_DARK_TEMPLATES = {'neon', 'circuit', 'codex', 'nebula', 'glitch'}
+_DARK_TEMPLATES = {'neon', 'circuit', 'codex', 'nebula', 'glitch', 'ember', 'obsidian', 'voltage', 'nimbus', 'console', 'flux', 'monolith', 'helix', 'orbit'}
 
 
 def _build_image_prompt(item: dict, section: str, category: str, template_id: str) -> str:

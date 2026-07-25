@@ -828,6 +828,11 @@ def _filter_valid_suggestions(suggestions, parsed_data, suppressed=None):
         instruction = s.get('instruction')
         if not section or not isinstance(instruction, str) or not instruction.strip():
             continue
+        # The enhancer rejects instructions over _MAX_INSTRUCTION_CHARS (300);
+        # the LLM is asked for <200 but nothing guarantees it — cap here so an
+        # overlong generated instruction can't 400 when the user clicks Generate.
+        if len(instruction) > _MAX_INSTRUCTION_CHARS:
+            s['instruction'] = instruction[:_MAX_INSTRUCTION_CHARS]
 
         if section == 'profile':
             # profileKey is the only routing target for profile cards
@@ -1010,6 +1015,7 @@ def _handle_analyze_and_suggest(body, path_user_id, upload_id, correlation_id):
              correlationId=correlation_id, userId=path_user_id, error=str(parse_err))
         return _response(200, {'suggestions': []})
     except Exception as e:
+        # Real error goes to CloudWatch only — never leak internals to the client.
         _log('ERROR', 'analyze_and_suggest error',
              correlationId=correlation_id, userId=path_user_id, error=str(e))
-        return _response(500, {'error': str(e)})
+        return _response(500, {'error': 'Internal server error'})

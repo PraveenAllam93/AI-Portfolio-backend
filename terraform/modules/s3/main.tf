@@ -115,6 +115,31 @@ resource "aws_s3_bucket_versioning" "validated" {
   }
 }
 
+# The validated bucket holds resume PII (the promoted resume + extracted text).
+# start_generation reads the text ONCE to queue AI processing; after that both
+# objects are dead weight. Without a lifecycle rule they lived forever — a
+# privacy gap (retained resume PII) and unbounded storage growth. Expire them
+# on the same schedule as quarantine/rejected. Anything abandoned this long is
+# already past the 24h stale-upload quota window.
+resource "aws_s3_bucket_lifecycle_configuration" "validated" {
+  bucket = aws_s3_bucket.validated.id
+
+  rule {
+    id     = "expire-processed-resumes"
+    status = "Enabled"
+
+    filter {}  # Apply to all objects in bucket
+
+    expiration {
+      days = var.lifecycle_expiration_days
+    }
+
+    abort_incomplete_multipart_upload {
+      days_after_initiation = 1
+    }
+  }
+}
+
 resource "aws_s3_bucket_server_side_encryption_configuration" "validated" {
   bucket = aws_s3_bucket.validated.id
 

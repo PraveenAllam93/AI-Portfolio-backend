@@ -118,9 +118,14 @@ def lambda_handler(event, context):
                 _log('ERROR', 'S3 delete failed (non-fatal)',
                      correlationId=correlation_id, error=str(s3_err))
 
-        # 3. Delete main portfolio record
+        # 3. Delete main portfolio record AND the UPLOAD tracking record.
+        # The UPLOAD# record was previously left behind, orphaning it in the
+        # table (and, for non-terminal states, potentially against the quota).
         table.delete_item(
             Key={'PK': f'USER#{path_user_id}', 'SK': f'PORTFOLIO#{upload_id}'}
+        )
+        table.delete_item(
+            Key={'PK': f'USER#{path_user_id}', 'SK': f'UPLOAD#{upload_id}'}
         )
 
         _log('INFO', 'Portfolio deleted',

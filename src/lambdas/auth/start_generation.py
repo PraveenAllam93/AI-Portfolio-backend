@@ -45,12 +45,29 @@ ALLOWED_CATEGORIES = {
     'software_engineer', 'designer', 'marketing', 'finance',
     'civil_engineer', 'mechanical_engineer',
 }
+# MUST stay in sync with the frontend TEMPLATE_META (templates/index.ts) and
+# upload/handler.py ALLOWED_TEMPLATES. This list previously lagged 28 templates
+# behind the renderer, so picking any newer template (torque, ledger, sterling,
+# atelier, voltage, …) failed here with "Invalid templateId".
 ALLOWED_TEMPLATES = {
-    'minimal', 'modern', 'bold', 'creative', 'aurora', 'nebula', 'luxury',
-    'executive', 'codex', 'neon', 'circuit', 'glitch', 'navy-gold', 'cosmos',
-    'retro', 'luxe', 'quantum', 'designer', 'designer-2', 'marketing',
-    'structura', 'blueprint', 'precision',
+    'aurora', 'nebula', 'codex', 'neon', 'circuit', 'glitch', 'navy-gold',
+    'cosmos', 'retro', 'luxe', 'quantum', 'voltage', 'nimbus', 'citrus',
+    'console', 'neural', 'flux', 'monolith', 'helix', 'orbit', 'iris',
+    'terminal', 'beacon',
+    'designer', 'designer-2', 'atelier', 'terra', 'ember', 'folio',
+    'obsidian', 'muse', 'prism', 'salon',
+    'marketing', 'momentum', 'apex', 'bloom', 'signal', 'vantage', 'canopy',
+    'structura', 'blueprint',
+    'precision', 'torque',
+    'ledger', 'sterling',
 }
+
+# Cap on the resume text embedded in the SQS message body. SQS has a hard
+# 256 KB limit — a long or OCR'd resume read whole from S3 would overflow it and
+# fail send_message. The AI consumer (ai_processing) already truncates to its own
+# MAX_RESUME_CHARS (40000), so a larger inline copy is pure risk with no benefit.
+# The FULL text also stays in S3 (rawTextS3Key), so nothing is lost.
+_MAX_SQS_RESUME_CHARS = int(os.environ.get('MAX_RESUME_CHARS', 40000))
 
 # Status the record must be in for generation to start.
 _READY_STATUS = 'AWAITING_SELECTION'
@@ -144,26 +161,53 @@ def lambda_handler(event, context):
             },
         )
 
-        sqs_client.send_message(
-            QueueUrl=PROCESSING_QUEUE,
-            MessageBody=json.dumps({
-                'userId': user_id,
-                'uploadId': upload_id,
-                'resumeText': resume_text,
-                'filename': filename,
-                'category': category,
-                'templateId': template_id,
-                'contentHash': content_hash,
-                'atsFailed': ats_failed,
-                'isGuest': is_guest,
-                'timestamp': datetime.now(timezone.utc).isoformat(),
-            }),
-            MessageAttributes={
-                'userId': {'DataType': 'String', 'StringValue': user_id},
-                'uploadId': {'DataType': 'String', 'StringValue': upload_id},
-                'category': {'DataType': 'String', 'StringValue': category},
-            },
-        )
+        try:
+            sqs_client.send_message(
+                QueueUrl=PROCESSING_QUEUE,
+                MessageBody=json.dumps({
+                    'userId': user_id,
+                    'uploadId': upload_id,
+                    # Capped to stay under the 256 KB SQS limit; full text remains
+                    # in S3 at rawTextS3Key. The consumer truncates here anyway.
+                    'resumeText': resume_text[:_MAX_SQS_RESUME_CHARS],
+                    'rawTextS3Key': text_key,
+                    'filename': filename,
+                    'category': category,
+                    'templateId': template_id,
+                    'contentHash': content_hash,
+                    'atsFailed': ats_failed,
+                    'isGuest': is_guest,
+                    'timestamp': datetime.now(timezone.utc).isoformat(),
+                }),
+                MessageAttributes={
+                    'userId': {'DataType': 'String', 'StringValue': user_id},
+                    'uploadId': {'DataType': 'String', 'StringValue': upload_id},
+                    'category': {'DataType': 'String', 'StringValue': category},
+                },
+            )
+        except Exception as sqs_err:
+            # The status was already flipped to QUEUED_FOR_AI (for idempotency).
+            # If the enqueue fails, roll it back to AWAITING_SELECTION so the
+            # record isn't stuck forever and the user can retry.
+            _log('ERROR', 'SQS enqueue failed — reverting to AWAITING_SELECTION',
+                 correlationId=correlation_id, userId=user_id, uploadId=upload_id,
+                 error=str(sqs_err))
+            try:
+                table.update_item(
+                    Key=key,
+                    UpdateExpression='SET #s = :status, #gsi1pk = :gsi1pk, updatedAt = :now',
+                    ExpressionAttributeNames={'#s': 'status', '#gsi1pk': 'GSI1PK'},
+                    ExpressionAttributeValues={
+                        ':status': _READY_STATUS,
+                        ':gsi1pk': f'STATUS#{_READY_STATUS}',
+                        ':now': datetime.now(timezone.utc).isoformat(),
+                    },
+                )
+            except Exception as revert_err:
+                _log('ERROR', 'Failed to revert status after SQS failure',
+                     correlationId=correlation_id, userId=user_id, uploadId=upload_id,
+                     error=str(revert_err))
+            return _response(503, {'error': 'Could not start generation. Please try again.'})
 
         _log('INFO', 'Queued for AI processing', correlationId=correlation_id,
              userId=user_id, uploadId=upload_id, category=category, templateId=template_id)

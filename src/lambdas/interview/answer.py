@@ -209,7 +209,9 @@ def lambda_handler(event, context):
         })
 
     except (ValueError, KeyError, TypeError) as e:
-        return response(400, {'error': str(e)})
+        # Log the real cause; return a generic message (no internal detail leak).
+        _log('WARNING', 'interview_answer', 'Bad request', correlationId=correlation_id, error=str(e))
+        return response(400, {'error': 'Invalid request. Please check your input and try again.'})
     except Exception as e:
         _log('ERROR', 'interview_answer', 'Unhandled error', correlationId=correlation_id, error=str(e))
         return response(500, {'error': 'Failed to process answer. Please try again.'})

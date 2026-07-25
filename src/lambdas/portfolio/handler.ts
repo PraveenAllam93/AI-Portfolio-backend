@@ -7,8 +7,10 @@
  *
  * Security:
  *   - publishMode=true strips EDITOR_SCRIPT and all contenteditable/data-path attrs
- *   - CSP meta tag (script-src 'none') is injected into the <head> of published HTML
  *   - All user data is HTML-escaped inside normalize() before template rendering
+ *     (URLs additionally pass _safeUrl, which only allows http/https)
+ *   - No CSP is injected: templates ship their own inline animation scripts
+ *     (scroll reveals, nav toggles) that a script-src 'none' policy would break.
  */
 
 import { DynamoDBClient, GetItemCommand, UpdateItemCommand } from '@aws-sdk/client-dynamodb';
@@ -247,7 +249,10 @@ export async function lambdaHandler(event: LambdaEvent, context: LambdaContext):
 				);
 			}
 
-			if (CLOUDFRONT_DISTRIBUTION_ID) {
+			// Drafts are written with Cache-Control: no-cache and rebuilt on every
+			// edit save — invalidating CloudFront for each of those burns paid
+			// invalidation paths for no benefit. Only invalidate on publish.
+			if (CLOUDFRONT_DISTRIBUTION_ID && target !== 'draft') {
 				try {
 					await cf.send(
 						new CreateInvalidationCommand({

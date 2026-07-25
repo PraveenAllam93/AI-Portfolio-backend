@@ -85,7 +85,10 @@ def lambda_handler(event, context):
             key=key,
         )
 
-        # Parse key: {user_id}/resume.{ext}
+        # Parse key. Two shapes land in this bucket:
+        #   {user_id}/{upload_id}/resume.{ext}  ← promoted resume (validator)
+        #   {user_id}/{upload_id}.txt           ← our own extracted-text artifact
+        # Always take the filename from the LAST segment so both shapes parse.
         parts = key.split('/')
         if len(parts) < 2:
             _log_warning(
@@ -96,7 +99,7 @@ def lambda_handler(event, context):
             return {'statusCode': 400, 'body': 'Invalid key format'}
 
         user_id = parts[0]
-        filename = parts[1]
+        filename = parts[-1]
         ext = os.path.splitext(filename)[1].lower()
 
         # Ignore our own extracted-text artifact ({uploadId}.txt). It is written

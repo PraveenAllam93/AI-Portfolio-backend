@@ -28,8 +28,15 @@ domain — see GUEST_EMAIL_DOMAIN):
      validated + quarantine), and the guest Cognito user.
 
 Security notes:
-  - realSub comes from the verified Cognito token; guestSub is validated to be a
-    guest-domain account before ANY data is touched or deleted.
+  - realSub comes from the verified Cognito token (API Gateway authorizer).
+  - guestSub is NOT taken from the request body. The caller must present the
+    guest's own Cognito ACCESS TOKEN, which we validate with Cognito GetUser;
+    the guest sub is read from that verified result. This proves the caller
+    possesses the guest session — a leaked guest sub (it appears in the edit-page
+    URL) is useless without the signed token, closing the IDOR where any logged-in
+    user could claim (and delete) another guest's draft by asserting its sub.
+  - The verified guest identity is then gated to the guest email domain, so a
+    real user's access token can never be used to claim+delete a real account.
   - Least-privilege IAM: this Lambda is the only one permitted cross-user
     DynamoDB access, and it gates every operation on the guest-domain check.
 """
@@ -101,23 +108,31 @@ def _rekey_item(item: dict, guest_sub: str, real_sub: str) -> dict:
     return new_item
 
 
-def _is_guest_account(sub: str) -> bool:
-    """True only if `sub` is a Cognito user whose email is on the guest domain."""
-    if not USER_POOL_ID:
-        return False
+def _resolve_guest_from_token(access_token: str, correlation_id: str):
+    """Validate a guest ACCESS token with Cognito and return (sub, email).
+
+    Cognito GetUser authorizes purely on the access token, so a valid response
+    proves the caller holds a live guest session. Returns (None, None) on any
+    invalid/expired token — the caller then refuses the claim.
+    """
+    if not access_token:
+        return None, None
     try:
-        resp = cognito.admin_get_user(UserPoolId=USER_POOL_ID, Username=sub)
-    except cognito.exceptions.UserNotFoundException:
-        return False
+        resp = cognito.get_user(AccessToken=access_token)
+    except cognito.exceptions.NotAuthorizedException:
+        return None, None
     except Exception as e:  # noqa: BLE001
-        _log('ERROR', 'admin_get_user failed', sub=sub, error=str(e))
-        return False
-    email = ''
+        _log('ERROR', 'get_user failed for guest token',
+             correlationId=correlation_id, error=str(e))
+        return None, None
+    sub, email = None, ''
     for attr in resp.get('UserAttributes', []):
-        if attr.get('Name') == 'email':
+        name = attr.get('Name')
+        if name == 'sub':
+            sub = attr.get('Value')
+        elif name == 'email':
             email = (attr.get('Value') or '').lower()
-            break
-    return email.endswith('@' + GUEST_EMAIL_DOMAIN)
+    return sub, email
 
 
 def _query_all(table, guest_sub: str) -> list:
@@ -168,24 +183,30 @@ def lambda_handler(event, context):
         real_email = (claims.get('email') or '').lower()
 
         body = json.loads(event.get('body') or '{}')
-        guest_sub = (body.get('guestUserId') or '').strip()
+        guest_access_token = (body.get('guestAccessToken') or '').strip()
         publish_upload_id = (body.get('uploadId') or '').strip() or None
 
         _log('INFO', 'Claim requested', correlationId=correlation_id,
-             realSub=real_sub, guestSub=guest_sub, publishUploadId=publish_upload_id)
+             realSub=real_sub, hasGuestToken=bool(guest_access_token),
+             publishUploadId=publish_upload_id)
 
         # --- Guard 1: caller must be a real account, not a guest ---
         if real_email.endswith('@' + GUEST_EMAIL_DOMAIN):
             return _response(403, {'error': 'A real account is required to claim a portfolio.'})
 
-        # --- Guard 2: guestUserId present and distinct ---
-        if not guest_sub or guest_sub == real_sub:
-            return _response(400, {'error': 'Invalid guest session.'})
+        # --- Guard 2: the guest identity is proven by possession of the guest's
+        # own access token — NOT asserted in the body. GetUser both validates the
+        # token and returns the authoritative sub/email. A leaked guest sub can no
+        # longer be used to claim someone else's draft. ---
+        guest_sub, guest_email = _resolve_guest_from_token(guest_access_token, correlation_id)
+        if not guest_sub:
+            return _response(403, {'error': 'Invalid or expired guest session.'})
 
-        # --- Guard 3: the target MUST be a guest-domain account ---
-        # Prevents claiming (and deleting) a real user's data via a forged sub.
-        if not _is_guest_account(guest_sub):
-            _log('WARNING', 'Refusing to claim non-guest account',
+        # --- Guard 3: the proven identity MUST be a guest-domain account and must
+        # differ from the caller (never let a real access token claim+delete a
+        # real account). ---
+        if guest_sub == real_sub or not guest_email.endswith('@' + GUEST_EMAIL_DOMAIN):
+            _log('WARNING', 'Refusing to claim non-guest / self account',
                  correlationId=correlation_id, guestSub=guest_sub)
             return _response(403, {'error': 'That session cannot be claimed.'})
 

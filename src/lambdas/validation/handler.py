@@ -157,7 +157,12 @@ def lambda_handler(event, context):
                 )
 
         # --- All validations passed: promote to validated bucket ---
-        validated_key = f"{user_id}/resume{ext}"
+        # Key MUST include upload_id. Up to MAX_ACTIVE_UPLOADS uploads can be in
+        # flight per user; a user-only key ({user}/resume.pdf) makes them collide,
+        # and an out-of-order S3 copy can leave a NEW upload pointing at an OLD
+        # resume's bytes ("app used my old resume" symptom). Per-upload isolation
+        # matches the pipeline doctrine.
+        validated_key = f"{user_id}/{upload_id}/resume{ext}"
 
         s3_client.copy_object(
             Bucket=VALIDATED_BUCKET,

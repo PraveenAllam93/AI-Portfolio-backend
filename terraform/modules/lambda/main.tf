@@ -677,14 +677,43 @@ resource "aws_lambda_event_source_mapping" "ai_processing_sqs" {
 
 locals {
   portfolio_generator_zip = "${path.module}/../../../dist/lambdas/portfolio_generator.zip"
+  frontend_templates_dir  = "${path.module}/../../../../AI-Portfolio-frontend/src/lib/templates"
+
+  # Fingerprint of every input the generator bundle is built from: the frontend
+  # templates (shared with the editor preview), the generator handler, and the
+  # build script itself. When any of these changes, the bundle is stale and the
+  # PUBLISHED site would diverge from the editor preview until rebuilt.
+  portfolio_generator_srchash = sha256(join("", concat(
+    [for f in fileset(local.frontend_templates_dir, "*.ts") : filesha256("${local.frontend_templates_dir}/${f}")],
+    [
+      filesha256("${path.module}/../../../src/lambdas/portfolio/handler.ts"),
+      filesha256("${path.module}/../../../build-portfolio-lambda.sh"),
+    ],
+  )))
+}
+
+# Auto-rebuild the generator bundle whenever a template/handler/build-script
+# source changes — so `terraform apply` alone keeps the published site in sync
+# with the templates. This removes the manual, easy-to-forget step of running
+# build-portfolio-lambda.sh before applying (a forgotten rebuild silently shipped
+# stale templates: preview looked right, deployed site was old).
+resource "terraform_data" "build_portfolio_generator" {
+  triggers_replace = local.portfolio_generator_srchash
+
+  provisioner "local-exec" {
+    command = "bash '${path.module}/../../../build-portfolio-lambda.sh'"
+  }
 }
 
 resource "aws_lambda_function" "portfolio_generator" {
-  filename         = local.portfolio_generator_zip
-  function_name    = "${var.name_prefix}-portfolio-generator"
-  role             = aws_iam_role.portfolio_generator.arn
-  handler          = "index.lambdaHandler"
-  source_code_hash = filebase64sha256(local.portfolio_generator_zip)
+  filename      = local.portfolio_generator_zip
+  function_name = "${var.name_prefix}-portfolio-generator"
+  role          = aws_iam_role.portfolio_generator.arn
+  handler       = "index.lambdaHandler"
+  # Keyed to the SOURCE fingerprint (not the built zip) so plan detects template
+  # changes and deploys the freshly-rebuilt bundle in the SAME apply.
+  source_code_hash = local.portfolio_generator_srchash
+  depends_on       = [terraform_data.build_portfolio_generator]
   runtime          = "nodejs22.x"
   timeout          = 60
   memory_size      = 256
@@ -2197,9 +2226,11 @@ resource "aws_iam_role_policy" "claim_guest_cognito" {
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [{
-      Sid      = "InspectAndDeleteGuest"
-      Effect   = "Allow"
-      Action   = ["cognito-idp:AdminGetUser", "cognito-idp:AdminDeleteUser"]
+      Sid = "InspectAndDeleteGuest"
+      Effect = "Allow"
+      # GetUser validates the guest's own access token (proof of session
+      # possession) so the claim isn't authorized from an asserted sub.
+      Action = ["cognito-idp:AdminGetUser", "cognito-idp:AdminDeleteUser", "cognito-idp:GetUser"]
       Resource = var.user_pool_arn
     }]
   })

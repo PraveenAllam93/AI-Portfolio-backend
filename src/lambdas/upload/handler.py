@@ -53,7 +53,11 @@ _EXPIRABLE_STATUSES = {'PENDING_UPLOAD', 'AWAITING_SELECTION'}
 _PENDING = 'pending'
 
 ALLOWED_CATEGORIES = {'software_engineer', 'designer', 'marketing', 'finance', 'civil_engineer', 'mechanical_engineer'}
-ALLOWED_TEMPLATES = {'minimal', 'modern', 'bold', 'creative', 'aurora', 'nebula', 'luxury', 'executive', 'codex', 'neon', 'circuit', 'glitch', 'navy-gold', 'cosmos', 'retro', 'luxe', 'quantum', 'designer', 'designer-2', 'marketing', 'structura', 'blueprint', 'precision'}
+# MUST stay in sync with the frontend TEMPLATE_META (templates/index.ts) and
+# start_generation.py ALLOWED_TEMPLATES. Legacy ids that no longer exist in the
+# renderer (minimal/modern/bold/creative/luxury/executive) have been removed —
+# they silently fell back to neon at render time.
+ALLOWED_TEMPLATES = {'aurora', 'nebula', 'codex', 'neon', 'circuit', 'glitch', 'navy-gold', 'cosmos', 'retro', 'luxe', 'quantum', 'voltage', 'nimbus', 'citrus', 'console', 'neural', 'flux', 'monolith', 'helix', 'orbit', 'iris', 'terminal', 'beacon', 'designer', 'designer-2', 'atelier', 'terra', 'ember', 'folio', 'obsidian', 'muse', 'prism', 'salon', 'marketing', 'momentum', 'apex', 'bloom', 'signal', 'vantage', 'canopy', 'structura', 'blueprint', 'precision', 'torque', 'ledger', 'sterling'}
 
 # Safe filename: block path separators, null bytes, and Windows reserved chars.
 # Allowlist approach was too strict (rejected spaces in names like "resume 1.pdf").

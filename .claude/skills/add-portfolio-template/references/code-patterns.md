@@ -1,486 +1,227 @@
 # Code Patterns Reference
 
-## Section A — Python Template Skeleton
+> The template system is **unified TypeScript**: one `src/lib/templates/{id}.ts` per design,
+> shared by the live editor preview AND the portfolio-generator Lambda. There is no Python
+> renderer and no separate `.js` preview file. All editing plumbing (contenteditable,
+> field-change/focus/blur messages, list editor, image upload, section scroll/reorder/hide) is
+> already implemented in `base.ts`'s `EDITOR_JS`/`EDITOR_SCRIPT` and the edit page — your
+> template only has to emit the right attributes via the `base.ts` helpers.
 
-Full annotated skeleton for `src/backend/portfolio/templates/{id}.py`:
+## Section A — TypeScript Template Skeleton (`src/lib/templates/{id}.ts`)
 
-```python
-"""
-{TemplateName} template — {brief visual description}
-"""
-from .utils import _e, _safe_url, render_section_in_order
+Model on the closest existing same-profession template (read it in full first). Skeleton:
 
+```ts
+/**
+ * Template: {Name}
+ * {one-line visual description: palette, fonts, signature animations}
+ */
+import type { NormalizedData } from './base';
+import {
+  _editable, _listEditable, _imgUpload, _rangeEditable, _pairEditable,
+  statShown, EDITOR_SCRIPT,
+} from './base';
 
-def css() -> str:
-    return """
-        /* Reset */
-        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-        body {
-            font-family: 'Inter', -apple-system, sans-serif;
-            background: #ffffff;     /* ← use design spec colors */
-            color: #1a1a1a;
-            line-height: 1.6;
-        }
+const FONTS_URL = 'https://fonts.googleapis.com/css2?family=...&display=swap';
 
-        /* Hero / Header */
-        .hero { ... }
-        .hero h1 { ... }
-        .hero .headline { ... }
-        .hero .bio { ... }
-        .hero .contact-links a { ... }
-
-        /* Sections */
-        .section { margin: 2rem 0; }
-        .section-title { ... }
-
-        /* Experience */
-        .exp-item { ... }
-        .exp-header { ... }
-        .exp-description { ... }
-        .key-points { list-style: disc; padding-left: 1.2em; }
-        .key-points li { margin: 0.25rem 0; }
-
-        /* Projects */
-        .project-card { ... }
-        .tech-tag { display: inline-block; ... }
-
-        /* Skills */
-        .skill-group { ... }
-        .skill-tag { ... }
-
-        /* Education, Certs, Achievements — shared card style */
-        .list-card { ... }
-    """
-
-
-def html(data: dict) -> str:
-    sections_html = render_section_in_order(data, {
-        "experience":            _render_experience,
-        "projects":              _render_projects,
-        "skills":                _render_skills,
-        "education":             _render_education,
-        "certifications":        _render_certifications,
-        "achievements":          _render_achievements,
-        "awards":                _render_awards,
-        "campaigns":             _render_campaigns,
-        "financial_modeling":    _render_financial_modeling,
-        "investment_portfolios": _render_investment_portfolios,
-        "design_philosophy":     _render_design_philosophy,
-        "software_proficiency":  _render_software_proficiency,
-    })
-
-    profile_image_html = ""
-    if data.get("profile_image"):
-        url = _safe_url(data["profile_image"])
-        if url:
-            profile_image_html = f'<img src="{url}" class="profile-img" alt="Profile photo">'
-
-    social_links = _render_social_links(data)
-
-    return f"""<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>{_e(data.get("name", "Portfolio"))}</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-  <style>{css()}</style>
-</head>
-<body>
-  <header class="hero">
-    {profile_image_html}
-    <h1>{_e(data.get("name", ""))}</h1>
-    <p class="headline">{_e(data.get("headline", ""))}</p>
-    <p class="bio">{_e(data.get("bio", ""))}</p>
-    {social_links}
-  </header>
-  <main>
-    {sections_html}
-  </main>
-</body>
-</html>"""
-
-
-def _render_social_links(data: dict) -> str:
-    links = []
-    for key, label in [
-        ("linkedin_url", "LinkedIn"),
-        ("github_url", "GitHub"),
-        ("portfolio_url", "Portfolio"),
-        ("twitter_url", "Twitter"),
-    ]:
-        url = _safe_url(data.get(key, ""))
-        if url:
-            links.append(f'<a href="{url}" target="_blank" rel="noopener">{label}</a>')
-    return f'<div class="social-links">{"".join(links)}</div>' if links else ""
-
-
-def _render_experience(data: dict) -> str:
-    items = data.get("experience", [])
-    if not items:
-        return ""
-    rows = []
-    for item in items:
-        end = "Present" if item.get("is_current") else _e(item.get("end_date", ""))
-        key_points = "".join(
-            f"<li>{_e(kp)}</li>" for kp in item.get("key_points", [])
-        )
-        key_points_html = f"<ul class='key-points'>{key_points}</ul>" if key_points else ""
-        rows.append(f"""
-        <div class="exp-item">
-          <div class="exp-header">
-            <strong>{_e(item.get("role", ""))}</strong> at {_e(item.get("company", ""))}
-            <span class="dates">{_e(item.get("start_date", ""))} – {end}</span>
-          </div>
-          <p class="exp-description">{_e(item.get("description", ""))}</p>
-          {key_points_html}
-        </div>""")
-    return f'<section class="section" id="experience"><h2 class="section-title">Experience</h2>{"".join(rows)}</section>'
-
-
-def _render_projects(data: dict) -> str:
-    items = data.get("projects", [])
-    if not items:
-        return ""
-    cards = []
-    for item in items:
-        tech = "".join(f'<span class="tech-tag">{_e(t)}</span>' for t in item.get("tech_stack", []))
-        live_url = _safe_url(item.get("project_url", ""))
-        github_url = _safe_url(item.get("github_repo", ""))
-        links = ""
-        if live_url:
-            links += f'<a href="{live_url}" target="_blank">Live</a> '
-        if github_url:
-            links += f'<a href="{github_url}" target="_blank">GitHub</a>'
-        cards.append(f"""
-        <div class="project-card">
-          <h3>{_e(item.get("title", ""))}</h3>
-          <p>{_e(item.get("description", ""))}</p>
-          <div class="tech-stack">{tech}</div>
-          <div class="project-links">{links}</div>
-        </div>""")
-    return f'<section class="section" id="projects"><h2 class="section-title">Projects</h2>{"".join(cards)}</section>'
-
-
-def _render_skills(data: dict) -> str:
-    groups = data.get("skill_groups", [])
-    if not groups:
-        return ""
-    html_parts = []
-    for group in groups:
-        tags = "".join(f'<span class="skill-tag">{_e(s)}</span>' for s in group.get("skills", []))
-        html_parts.append(f'<div class="skill-group"><strong>{_e(group.get("category", ""))}</strong><div class="skill-tags">{tags}</div></div>')
-    return f'<section class="section" id="skills"><h2 class="section-title">Skills</h2>{"".join(html_parts)}</section>'
-
-
-def _render_education(data: dict) -> str:
-    items = data.get("education", [])
-    if not items:
-        return ""
-    rows = "".join(f"""
-        <div class="list-card">
-          <strong>{_e(item.get("degree", ""))} in {_e(item.get("field_of_study", ""))}</strong>
-          <span>{_e(item.get("institution", ""))} · {_e(item.get("start_year", ""))}–{_e(item.get("end_year", ""))}</span>
-        </div>""" for item in items)
-    return f'<section class="section" id="education"><h2 class="section-title">Education</h2>{rows}</section>'
-
-
-def _render_certifications(data: dict) -> str:
-    items = data.get("certifications", [])
-    if not items:
-        return ""
-    rows = "".join(f"""
-        <div class="list-card">
-          <strong>{_e(item.get("name", ""))}</strong>
-          <span>{_e(item.get("issuer", ""))} · {_e(item.get("year", ""))}</span>
-        </div>""" for item in items)
-    return f'<section class="section" id="certifications"><h2 class="section-title">Certifications</h2>{rows}</section>'
-
-
-def _render_achievements(data: dict) -> str:
-    items = data.get("achievements", [])
-    if not items:
-        return ""
-    rows = "".join(f"""
-        <div class="list-card">
-          <strong>{_e(item.get("title", ""))}</strong>
-          <p>{_e(item.get("description", ""))}</p>
-        </div>""" for item in items)
-    return f'<section class="section" id="achievements"><h2 class="section-title">Achievements</h2>{rows}</section>'
-
-
-def _render_awards(data: dict) -> str:
-    items = data.get("awards", [])
-    if not items:
-        return ""
-    rows = "".join(f"""
-        <div class="list-card">
-          <strong>{_e(item.get("title", ""))}</strong>
-          <span>{_e(item.get("awarding_body", ""))} · {_e(item.get("year", ""))}</span>
-        </div>""" for item in items)
-    return f'<section class="section" id="awards"><h2 class="section-title">Awards</h2>{rows}</section>'
-
-
-def _render_campaigns(data: dict) -> str:
-    items = data.get("campaigns", [])
-    if not items:
-        return ""
-    cards = []
-    for item in items:
-        channels = ", ".join(_e(c) for c in item.get("channels_used", []))
-        metrics = "".join(f"<li>{_e(m)}</li>" for m in item.get("performance_metrics", []))
-        cards.append(f"""
-        <div class="list-card">
-          <strong>{_e(item.get("campaign_name", ""))}</strong>
-          <span>{_e(item.get("campaign_type", ""))} · {channels}</span>
-          <ul>{metrics}</ul>
-        </div>""")
-    return f'<section class="section" id="campaigns"><h2 class="section-title">Campaigns</h2>{"".join(cards)}</section>'
-
-
-def _render_financial_modeling(data: dict) -> str:
-    items = data.get("financial_modeling", [])
-    if not items:
-        return ""
-    rows = "".join(f"""
-        <div class="list-card">
-          <strong>{_e(item.get("model_type", ""))}</strong>
-          <p>{_e(item.get("outcome", ""))}</p>
-        </div>""" for item in items)
-    return f'<section class="section" id="financial_modeling"><h2 class="section-title">Financial Modeling</h2>{rows}</section>'
-
-
-def _render_investment_portfolios(data: dict) -> str:
-    items = data.get("investment_portfolios", [])
-    if not items:
-        return ""
-    rows = "".join(f"""
-        <div class="list-card">
-          <strong>{_e(item.get("portfolio_type", ""))}</strong>
-          <span>AUM: {_e(item.get("assets_under_management", ""))} · Return: {_e(item.get("performance_return", ""))}</span>
-        </div>""" for item in items)
-    return f'<section class="section" id="investment_portfolios"><h2 class="section-title">Investment Portfolios</h2>{rows}</section>'
-
-
-def _render_design_philosophy(data: dict) -> str:
-    text = data.get("design_philosophy", "")
-    if not text:
-        return ""
-    return f'<section class="section" id="design_philosophy"><h2 class="section-title">Design Philosophy</h2><p>{_e(text)}</p></section>'
-
-
-def _render_software_proficiency(data: dict) -> str:
-    tools = data.get("software_proficiency", [])
-    if not tools:
-        return ""
-    tags = "".join(f'<span class="skill-tag">{_e(t)}</span>' for t in tools)
-    return f'<section class="section" id="software_proficiency"><h2 class="section-title">Software Proficiency</h2><div class="skill-tags">{tags}</div></section>'
-```
-
----
-
-## Section B — JS Template: `inlineEditingScript()` and `editingOverlayCSS()`
-
-Copy these verbatim into your JS template file. They implement the full editing protocol.
-
-```javascript
-export function editingOverlayCSS() {
+// `em` = edit mode. `le` only emits data-list-path in edit mode (see Z6).
+function css(v: NormalizedData): string {
+  const em = v.edit_mode;
   return `
-    .editable { cursor: text; border-radius: 3px; transition: outline 0.15s; }
-    .editable:hover { outline: 2px dashed #3b82f6; outline-offset: 2px; }
-    .editable:focus { outline: 2px solid #2563eb; outline-offset: 2px; }
-    .section-highlight { animation: section-flash 1s ease-out; }
-    @keyframes section-flash {
-      0%   { background: rgba(59,130,246,0.18); }
-      100% { background: transparent; }
-    }
+    :root{ --bg:#0a0d14; --accent:#00d4ff; --text:#e8eaf0; /* … full palette … */ }
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+    body{font-family:'…',sans-serif;background:var(--bg);color:var(--text)}
+    /* … PORT THE FULL DESIGN: @keyframes, .reveal states, hovers, decorative
+         elements, and @media breakpoints. See Z8 — do not ship a skeleton. … */
+    ${em ? '' : 'body{cursor:none}'}   /* gate cursor:none etc. to published only (Z13) */
   `;
 }
 
-export function inlineEditingScript() {
-  return `
-    (function() {
-      // Make all .editable elements contenteditable
-      document.querySelectorAll('.editable').forEach(function(el) {
-        el.setAttribute('contenteditable', 'true');
-        el.setAttribute('spellcheck', 'false');
+export function html(v: NormalizedData): string {
+  const em = v.edit_mode;
+  const le = (path: string) => (em ? _listEditable(path) : '');
 
-        // On focus: tell the parent frame which field is active
-        el.addEventListener('focus', function() {
-          window.parent.postMessage({
-            type: 'field-focus',
-            field:   el.dataset.field,
-            section: el.dataset.section,
-            index:   el.dataset.index !== undefined ? parseInt(el.dataset.index) : null,
-            path:    el.dataset.path,
-          }, '*');
-        });
+  // ONE renderer per orderable section this profession has (Section C).
+  const sectionMap: Record<string, () => string> = {
+    experience:      () => renderExperience(v, em, le),
+    projects:        () => renderProjects(v, em, le),
+    skills:          () => renderSkills(v, em, le),
+    education:       () => renderEducation(v, em),
+    certifications:  () => renderCerts(v, em),
+    achievements:    () => renderAchievements(v, em),
+    // designer-only: awards / design_philosophy / software_proficiency
+    // marketing-only: campaigns   |   finance-only: financial_modeling / investment_portfolios
+    custom_sections: () => renderCustomSections(v, em, le),
+  };
 
-        // On input: sync value to parent frame in real time
-        el.addEventListener('input', function() {
-          window.parent.postMessage({
-            type:    'field-change',
-            field:   el.dataset.field,
-            section: el.dataset.section,
-            index:   el.dataset.index !== undefined ? parseInt(el.dataset.index) : null,
-            path:    el.dataset.path,
-            value:   el.innerText,
-          }, '*');
-        });
+  const sections = v.section_order
+    .filter((k) => !v.hidden_sections.has(k) && sectionMap[k])
+    .map((k) => sectionMap[k]())
+    .join('');
 
-        // On blur: trigger save
-        el.addEventListener('blur', function() {
-          window.parent.postMessage({
-            type:    'field-blur',
-            field:   el.dataset.field,
-            section: el.dataset.section,
-            index:   el.dataset.index !== undefined ? parseInt(el.dataset.index) : null,
-            path:    el.dataset.path,
-            value:   el.innerText,
-          }, '*');
-        });
-      });
-
-      // Listen for messages FROM the parent frame
-      window.addEventListener('message', function(event) {
-        var msg = event.data;
-
-        // Parent updated a field — update the matching element
-        if (msg.type === 'field-update') {
-          var el = document.querySelector(
-            '[data-path="' + msg.path + '"]'
-          );
-          if (el && document.activeElement !== el) {
-            el.innerText = msg.value;
-          }
-        }
-
-        // Scroll to a section (left panel click)
-        if (msg.type === 'scroll-to-section') {
-          var target = document.getElementById(msg.section)
-                    || document.querySelector('[data-section="' + msg.section + '"]');
-          if (target) {
-            target.scrollIntoView({ behavior: 'smooth', block: 'start' });
-            target.classList.add('section-highlight');
-            setTimeout(function() { target.classList.remove('section-highlight'); }, 1000);
-          }
-        }
-
-        // Section reorder: reorder DOM elements inside <main>
-        if (msg.type === 'reorder-sections') {
-          var main = document.querySelector('main');
-          if (main) {
-            msg.order.forEach(function(sectionId) {
-              var sec = document.getElementById(sectionId);
-              if (sec) main.appendChild(sec);
-            });
-          }
-        }
-
-        // Section visibility: show/hide
-        if (msg.type === 'toggle-section') {
-          var sec = document.getElementById(msg.section);
-          if (sec) sec.style.display = msg.visible ? '' : 'none';
-        }
-      });
-    })();
-  `;
+  return `<!DOCTYPE html><html lang="en"><head>
+    <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>${v.name}</title>
+    <link href="${FONTS_URL}" rel="stylesheet">
+    <style>${css(v)}</style>
+  </head><body>
+    ${renderHero(v, em)}
+    <main>${sections}</main>
+    ${renderContact(v, em)}
+    <script>/* template's own runtime: nav, reveal observer, image slideshow (Z12) */</script>
+    ${EDITOR_SCRIPT}
+  </body></html>`;
 }
+```
+
+Rules the skeleton encodes:
+- Exactly one top-level `<section id="{key}">` per orderable section — never merge two (Z14).
+- `EDITOR_SCRIPT` is always emitted (it powers editing in edit AND published mode).
+- Values in `v` are already HTML-escaped by `normalize()` — **do not re-escape**. Only pass
+  URLs you build yourself through nothing (they are pre-`_safeUrl`'d too).
+
+---
+
+## Section B — Editable-binding cookbook
+
+All helpers come from `base.ts`. `em = v.edit_mode`.
+
+**Scalar text** — bind to a REAL field (Z9). `data-path` forms: `profile.*`, `portfolio.*`,
+`{section}.{visibleIndex}.{field}`, `template_overrides.*`.
+```ts
+<h1 ${em ? _editable('profile.full_name') : ''}>${v.name}</h1>
+<p  ${em ? _editable('portfolio.headline') : ''}>${v.headline}</p>      // AI headline
+<span ${em ? _editable('profile.headline') : ''}>${v.profile_headline}</span> // raw title (Z10)
+<p  ${em ? _editable('portfolio.bio', true) : ''}>${v.bio}</p>          // multiline=true
+```
+
+**Experience/education date range** — never bind computed `duration`/`year_range` (Z9):
+```ts
+${_rangeEditable(`experience.${i}.start_date`, exp.start_date,
+                 `experience.${i}.end_date`,   exp.end_date, em)}
+${_pairEditable(`education.${i}.degree`, edu.degree,
+                `education.${i}.field_of_study`, edu.field_of_study, em, ' in ')}
+```
+
+**List field** — its OWN region, render ALL items, gate with `?.length` (Z1–Z6):
+```ts
+${exp.key_points?.length
+  ? `<ul ${le(`experience.${i}.key_points`)}>${exp.key_points.map(p => `<li>${p}</li>`).join('')}</ul>`
+  : ''}
+```
+Independent list fields — never merge two into one region: `key_points`, `responsibilities`,
+`measurable_outcomes`, `tech_stack`, `software_used`, `performance_metrics`, `channels_used`,
+`channels_managed`, a skill group's `skills`, custom-section `tags`.
+
+**Images** — wrap the image container; renders an upload zone in edit mode, nothing published:
+```ts
+<div ${_imgUpload('profile.profile_image', em)}>${v.profile_image
+  ? `<img src="${v.profile_image}" alt="">` : ''}</div>
+// section item images (max 3) — put where the DESIGN shows a visual (Z11):
+<div ${_imgUpload(`projects.${i}.images`, em)}>…</div>
+// second about/summary image → also add {id} to SUMMARY_IMAGE_TEMPLATES in index.ts:
+<div ${_imgUpload('profile.summary_image', em)}>…</div>
+```
+Multiple images = looping crossfade slideshow, not a stack (Z12).
+
+**Stats** (hero/about numbers) — override-aware + auto-hide zeros:
+```ts
+const years = v.template_overrides.years_experience ?? computeYears(v.experience);
+${statShown(v, 'years_experience', years) ? `<div class="stat">${years}+ Years</div>` : ''}
+// register the keys in TEMPLATE_FIELDS[id] so the Portfolio Fields panel exposes them.
+```
+
+**Custom sections** — honor each item's `display_type`; register supported layouts in
+`CUSTOM_DISPLAY_TYPES[id]`:
+```ts
+v.custom_sections.map((cs, ci) => `
+  <section id="custom_sections">
+    <h2 ${em ? _editable(`custom_sections.${ci}.title`) : ''}>${cs.title}</h2>
+    ${cs.display_type === 'timeline' ? renderTimeline(cs, ci, le)
+      : cs.display_type === 'list'   ? renderList(cs, ci, le)
+      :                                renderCards(cs, ci, le)}
+  </section>`).join('')
 ```
 
 ---
 
-## Section C — JS Template: Escaping Utility
+## Section C — `NormalizedData` field reference (per profession)
 
-```javascript
-function esc(str) {
-  if (!str) return '';
-  return String(str)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
-}
+Shapes come from `base.ts`. Universal sections render for every profession; the rest are gated
+by `SECTION_CATEGORIES` (base.ts) and mirrored by `SECTION_CONFIG.categories` (edit page).
 
-function safeUrl(url) {
-  if (!url) return '';
-  url = String(url).trim();
-  return (url.startsWith('http://') || url.startsWith('https://')) ? esc(url) : '';
-}
 ```
+Profile (always): v.name, v.headline (AI), v.profile_headline (raw title), v.bio,
+  v.uniqueValue, v.email, v.phone, v.location, v.profile_image, v.summary_image,
+  v.contact_tagline, v.core_expertise[], v.{linkedin,github,portfolio,twitter}_url
+
+Universal sections: experience[], skills (v.skill_groups[]), education[],
+  certifications[], achievements[], custom_sections[]
+
+experience[i]: role, company, location, start_date, end_date, is_current, description,
+  key_points[], channels_managed[]*, financial_metrics_managed[]*, images[]   (*marketing/finance)
+projects[i]:   title, description, responsibilities[], measurable_outcomes[], tech_stack[],
+  github_repo, project_url, project_category, design_concept, software_used[], images[]
+education[i]:  degree, field_of_study, institution, location, start_year, end_year, grade_or_score
+certifications[i]: name, issuer, year, url        achievements[i]: title, description, year, url
+
+Profession-specific sections:
+  software_engineer:  projects
+  designer:           projects, awards[], design_philosophy (string), software_proficiency[]
+  marketing:          campaigns[] {campaign_name, campaign_type, channels_used[], budget, performance_metrics[]}
+  finance:            financial_modeling[] {model_type, tools_used[], outcome},
+                      investment_portfolios[] {portfolio_type, assets_under_management, performance_return}
+  civil_engineer:     projects, software_proficiency[]
+  mechanical_engineer:projects, software_proficiency[]
+
+custom_sections[i]: section_id, title, display_type('cards'|'list'|'timeline'),
+  items[] { label, value, subtitle, tags[], url }
+
+Metadata: v.category, v.section_order[], v.hidden_sections(Set), v.edit_mode,
+  v.template_overrides{}, v.field_visibility{}
+```
+
+Render **every** section the profession has (even if the source design omits it — Z15) and
+**none** from other professions.
 
 ---
 
-## Section D — Edit Page: Handling Preview Messages (SvelteKit)
+## Section D — Registration snippets
 
-In `src/routes/app/portfolio/[userId]/edit/+page.svelte`, the message handler listens to the preview iframe. Verify this block exists and handles all message types:
-
-```typescript
-function handlePreviewMessage(event: MessageEvent) {
-  const msg = event.data;
-
-  if (msg.type === 'field-focus') {
-    // Scroll center panel to the matching field and focus it
-    scrollCenterPanelToField(msg.section, msg.field, msg.index);
-    highlightLeftPanelSection(msg.section);
-  }
-
-  if (msg.type === 'field-change') {
-    // Update local state with the new value (optimistic, no save yet)
-    setNestedValue(portfolioData, msg.path, msg.value);
-  }
-
-  if (msg.type === 'field-blur') {
-    // Commit the value and trigger auto-save
-    setNestedValue(portfolioData, msg.path, msg.value);
-    triggerAutoSave(msg.section, msg.field, msg.index);
-  }
-}
-
-// Send updates from form → preview
-function syncFieldToPreview(path: string, value: string) {
-  previewIframe?.contentWindow?.postMessage({
-    type: 'field-update',
-    path,
-    value,
-  }, '*');
-}
-
-// Send section scroll request from left panel → preview  
-function scrollPreviewToSection(sectionId: string) {
-  previewIframe?.contentWindow?.postMessage({
-    type: 'scroll-to-section',
-    section: sectionId,
-  }, '*');
-}
+**`src/lib/templates/index.ts`:**
+```ts
+import { html as {id}Html } from './{id}';
+const TEMPLATES = { /* … */  {id}: {id}Html };
+export const TEMPLATE_META = { /* … */
+  {id}: { name: '{Name}', accent: '#RRGGBB', profession: '{profession}' } };
+// if it shows computed stats:
+export const TEMPLATE_FIELDS = { /* … */
+  {id}: [{ key: 'years_experience', label: 'Years of Experience', hint: '…' }] };
+// opt-in feature sets, only if used:
+export const CUSTOM_DISPLAY_TYPES = { /* … */ {id}: ['cards','list','timeline'] };
+export const SUMMARY_IMAGE_TEMPLATES  = new Set([/* … */ '{id}']);
+export const CORE_EXPERTISE_TEMPLATES = new Set([/* … */ '{id}']);
+export const CONTACT_TAGLINE_TEMPLATES= new Set([/* … */ '{id}']);
+export const DEFAULT_CONTACT_TAGLINE  = { /* … */ {id}: '…' };
 ```
 
----
+**Upload wizard** `src/routes/app/resumes/upload/+page.svelte` — hardcoded grid, `{id,name,tag}`:
+```ts
+const TEMPLATES_BY_PROFESSION = { {profession}: [ /* … */ { id: '{id}', name: '{Name}', tag: '{Tag}' } ] };
+```
 
-## Section E — `render_section_in_order` Python Utility
-
-If this utility doesn't exist in `src/backend/portfolio/utils.py`, add it:
-
+**Backend allowlists (Python):**
 ```python
-def render_section_in_order(
-    data: dict,
-    renderers: dict,
-    section_order: list = None,
-    hidden_sections: list = None,
-) -> str:
-    order = section_order or data.get("section_order") or list(renderers.keys())
-    hidden = set(hidden_sections or data.get("hidden_sections") or [])
-    parts = []
-    for key in order:
-        if key in hidden or key not in renderers:
-            continue
-        result = renderers[key](data)
-        if result:
-            parts.append(result)
-    return "\n".join(parts)
+# src/lambdas/upload/handler.py
+ALLOWED_TEMPLATES = { …, '{id}' }
+# src/lambdas/auth/patch_portfolio.py
+_VALID_TEMPLATE_IDS = frozenset({ …, '{id}' })
+# src/lambdas/auth/generate_project_image.py  (only if dark theme)
+_DARK_TEMPLATES = { …, '{id}' }
 ```
+
+**Deploy:** `export NVM_DIR="$HOME/.nvm"; . "$NVM_DIR/nvm.sh"; bash build-portfolio-lambda.sh`
+then `cd terraform && terraform apply -auto-approve -lock=false`.
 
 ---
 
@@ -694,3 +435,25 @@ as distinct sections wired through the `sectionMap` + ordered-render loop.
   (e.g. a software-engineer design with no Experience block — we still need `experience`,
   `skills`, `projects`, etc. all handled). Use the closest existing template as the section
   checklist.
+
+### Z16. NEVER render skill/tool proficiency bars, rings, meters, or percentages
+
+Our data model has **no proficiency/level/percentage field** for skills or tools. A skill group
+is just `{ category, skills[] }` and `software_proficiency` is a flat `string[]` — all names,
+no numbers. Many source designs render skills as animated progress bars ("SolidWorks 95%",
+`.skill-bar-fill` with `data-width`), radial rings, dot meters, or star ratings. Those numbers
+are **hardcoded design filler with no field behind them** (same class of dead control as Z15).
+
+**Always convert them to tag/pill chips instead** — one `<span>` per skill inside the field's
+`_listEditable` region:
+```js
+// ❌ WRONG — invented proficiency with no backing data
+<div class="skill-bar"><span>Excel</span><span>95%</span><div class="bar-fill" style="width:95%"></div></div>
+// ✅ RIGHT — editable tag chips, render ALL items
+<div class="skill-tags" ${le(`skills.${gi}.skills`)}>${g.skills.map(s => `<span class="tag">${s}</span>`).join('')}</div>
+```
+This applies to `skills.*.skills`, `software_proficiency`, `core_expertise`, a campaign's
+`channels_used`, a project's `tech_stack`/`software_used`, and any custom-section `tags` — none
+of them carry a level. Drop the bar CSS, the `data-width`/`--pct` attributes, and the
+width-animation JS entirely. If a design's skills section is *only* bars, the whole section
+becomes a tag-chip grid (see `precision`/`torque` skills, `sterling` expertise cards).

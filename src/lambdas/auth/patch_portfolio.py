@@ -68,6 +68,11 @@ _VALID_TEMPLATE_IDS: frozenset = frozenset({
     'navy-gold', 'nebula', 'neon', 'quantum', 'retro',
     'designer', 'designer-2', 'marketing', 'glitch',
     'structura', 'blueprint', 'precision',
+    'torque', 'ledger', 'sterling',
+    'momentum', 'apex', 'bloom', 'signal', 'vantage', 'canopy',
+    'atelier', 'terra', 'ember', 'folio',
+    'obsidian', 'muse', 'prism', 'salon',
+    'voltage', 'nimbus', 'citrus', 'console', 'neural', 'flux', 'monolith', 'helix', 'orbit', 'iris', 'terminal', 'beacon',
 })
 
 # Shape B: array sections in parsedData -> max item count
@@ -540,12 +545,21 @@ def _handle_section_patch(body: dict, path_user_id: str, upload_id: str, correla
             allowed_keys = _ALLOWED_OBJECT_SECTIONS[section]
             if not isinstance(data, dict):
                 return _response(400, {'error': f'data for section "{section}" must be an object'})
+            # Per-key caps sized to match the edit page's maxlength attributes.
+            # A blanket 500-char cap here used to SILENTLY truncate summary
+            # (frontend allows 2000) and long core_expertise lists — the UI kept
+            # showing the full text until the next reload "lost" it.
+            _profile_key_caps = {
+                'summary': 2000,
+                'core_expertise': 2000,
+                'contact_tagline': 1000,
+            }
             sanitized_data = {}
             for k, v in data.items():
                 if k not in allowed_keys:
                     continue  # drop unknown keys silently
                 if isinstance(v, str):
-                    sanitized_data[k] = v[:500]
+                    sanitized_data[k] = v[:_profile_key_caps.get(k, 500)]
                 elif isinstance(v, dict) and k == 'social_links':
                     _allowed_socials = {'linkedin', 'github', 'gitlab', 'portfolio', 'twitter'}
                     sanitized_data[k] = {
