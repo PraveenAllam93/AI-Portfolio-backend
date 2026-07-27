@@ -378,23 +378,31 @@ class CustomSectionItem(BaseModel):
         description="Short title or name for this item"
     )
     value: Optional[str] = Field(
-        description="Main content, description, or body text for this item"
+        description=(
+            "Main content, description, or body text for this item. Fold any "
+            "detail that has no dedicated field below into this sentence rather "
+            "than discarding it"
+        )
     )
     subtitle: Optional[str] = Field(
-        description="Secondary info such as date range, organization, or role"
+        description="Secondary info such as date range, organization, role, venue, or issuer"
     )
     tags: Optional[List[str]] = Field(
         default_factory=list,
         description="Optional tags, chips, or categories for this item"
     )
     url: Optional[str] = Field(
-        description="Optional URL to link from this item"
+        description="Optional full http(s) URL to link from this item"
     )
 
 
 class CustomSection(BaseModel):
     section_id: str = Field(
-        description="Unique snake_case identifier for this section (e.g. 'volunteer_work', 'speaking_engagements')"
+        description=(
+            "Unique snake_case identifier for this section (e.g. 'volunteer_work', "
+            "'speaking_engagements'). Must NOT match a field name that already "
+            "exists elsewhere in this schema"
+        )
     )
     title: str = Field(
         description="Human-readable section heading displayed on the portfolio"
@@ -438,7 +446,14 @@ class SoftwareEngineerModel(BaseModel):
     certifications: Optional[List[CertificationItem]]
     custom_sections: Optional[List[CustomSection]] = Field(
         default_factory=list,
-        description="Additional portfolio sections added by the user that don't fit standard categories"
+        description=(
+            "Fallback for resume sections that have no home in the fields above. "
+            "Use as a LAST RESORT only, never duplicating content already placed "
+            "in another field. Exclude personal/identity details (date of birth, "
+            "marital status, ID numbers, address, salary), declarations and "
+            "references — those must be omitted entirely, not captured here. "
+            "Also holds custom sections the user adds later from the editor"
+        )
     )
 
 
@@ -481,7 +496,14 @@ class DesignerModel(BaseModel):
     certifications: Optional[List[CertificationItem]]
     custom_sections: Optional[List[CustomSection]] = Field(
         default_factory=list,
-        description="Additional portfolio sections added by the user that don't fit standard categories"
+        description=(
+            "Fallback for resume sections that have no home in the fields above. "
+            "Use as a LAST RESORT only, never duplicating content already placed "
+            "in another field. Exclude personal/identity details (date of birth, "
+            "marital status, ID numbers, address, salary), declarations and "
+            "references — those must be omitted entirely, not captured here. "
+            "Also holds custom sections the user adds later from the editor"
+        )
     )
 
 
@@ -518,7 +540,14 @@ class MarketingModel(BaseModel):
     certifications: Optional[List[CertificationItem]]
     custom_sections: Optional[List[CustomSection]] = Field(
         default_factory=list,
-        description="Additional portfolio sections added by the user that don't fit standard categories"
+        description=(
+            "Fallback for resume sections that have no home in the fields above. "
+            "Use as a LAST RESORT only, never duplicating content already placed "
+            "in another field. Exclude personal/identity details (date of birth, "
+            "marital status, ID numbers, address, salary), declarations and "
+            "references — those must be omitted entirely, not captured here. "
+            "Also holds custom sections the user adds later from the editor"
+        )
     )
 
 
@@ -567,7 +596,14 @@ class FinanceModel(BaseModel):
     certifications: Optional[List[CertificationItem]]
     custom_sections: Optional[List[CustomSection]] = Field(
         default_factory=list,
-        description="Additional portfolio sections added by the user that don't fit standard categories"
+        description=(
+            "Fallback for resume sections that have no home in the fields above. "
+            "Use as a LAST RESORT only, never duplicating content already placed "
+            "in another field. Exclude personal/identity details (date of birth, "
+            "marital status, ID numbers, address, salary), declarations and "
+            "references — those must be omitted entirely, not captured here. "
+            "Also holds custom sections the user adds later from the editor"
+        )
     )
 
 # =====================================================
@@ -651,7 +687,15 @@ class CivilEngineerModel(BaseModel):
     certifications: Optional[List[CivilCertification]]
 
     custom_sections: Optional[List[CustomSection]] = Field(
-        default_factory=list
+        default_factory=list,
+        description=(
+            "Fallback for resume sections that have no home in the fields above. "
+            "Use as a LAST RESORT only, never duplicating content already placed "
+            "in another field. Exclude personal/identity details (date of birth, "
+            "marital status, ID numbers, address, salary), declarations and "
+            "references — those must be omitted entirely, not captured here. "
+            "Also holds custom sections the user adds later from the editor"
+        )
     )
 
 # =====================================================
@@ -739,7 +783,15 @@ class MechanicalEngineerModel(BaseModel):
     certifications: Optional[List[CertificationItem]]
 
     custom_sections: Optional[List[CustomSection]] = Field(
-        default_factory=list
+        default_factory=list,
+        description=(
+            "Fallback for resume sections that have no home in the fields above. "
+            "Use as a LAST RESORT only, never duplicating content already placed "
+            "in another field. Exclude personal/identity details (date of birth, "
+            "marital status, ID numbers, address, salary), declarations and "
+            "references — those must be omitted entirely, not captured here. "
+            "Also holds custom sections the user adds later from the editor"
+        )
     )
 
 # ---------------------------------------------------------------------------
