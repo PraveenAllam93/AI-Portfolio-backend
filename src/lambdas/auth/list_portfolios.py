@@ -67,6 +67,11 @@ def lambda_handler(event, context):
         # Public URLs are addressed by username, so resolve it once up front.
         username = uu.get_profile(table, path_user_id).get('username')
 
+        # Which portfolio answers the bare /u/{username}. Read once rather than
+        # per portfolio.
+        main_result = table.get_item(Key={'PK': f'USER#{path_user_id}', 'SK': 'PNUM#main'})
+        main_upload_id = (main_result.get('Item') or {}).get('uploadId')
+
         # Query all PORTFOLIO# records for this user, paginating through all pages
         items = []
         query_kwargs = dict(
@@ -93,11 +98,20 @@ def lambda_handler(event, context):
             portfolio_path = item.get('portfolioPath', '')
             active_version = item.get('activeVersion')
 
-            public = uu.public_path(portfolio_path, username)
+            # Prefer the short, permanent form (u/{username}/{n}); it survives
+            # republishes, whereas the versioned path changes on every publish.
+            number = item.get('portfolioNumber')
+            short = uu.public_path_for_number(username, number)
+            public = short or uu.public_path(portfolio_path, username)
 
             portfolio_url = None
             if CLOUDFRONT_URL and public and active_version:
-                portfolio_url = f'{CLOUDFRONT_URL}/{public}/index.html'
+                # The short form already points at the active version, so it
+                # needs no /index.html suffix — the edge resolves it.
+                portfolio_url = (
+                    f'{CLOUDFRONT_URL}/{public}'
+                    if short else f'{CLOUDFRONT_URL}/{public}/index.html'
+                )
 
             portfolios.append({
                 'uploadId': upload_id,
@@ -105,6 +119,14 @@ def lambda_handler(event, context):
                 'status': item.get('status'),
                 'portfolioPath': portfolio_path,
                 'publicPath': public,
+                'portfolioNumber': int(number) if number is not None else None,
+                'isMain': bool(main_upload_id) and upload_id == main_upload_id,
+                # The bare handle, served only for the main portfolio.
+                'mainUrl': (
+                    f'{CLOUDFRONT_URL}/u/{uu.normalize(username)}'
+                    if CLOUDFRONT_URL and username and main_upload_id == upload_id
+                    else None
+                ),
                 'activeVersion': active_version,
                 'portfolioUrl': portfolio_url,
                 'isLive': item.get('isLive', False),

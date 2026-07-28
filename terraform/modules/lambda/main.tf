@@ -339,9 +339,11 @@ resource "aws_iam_role_policy" "portfolio_generator_dynamodb" {
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [{
-      Sid      = "ReadAndUpdatePortfolio"
-      Effect   = "Allow"
-      Action   = ["dynamodb:GetItem", "dynamodb:UpdateItem"]
+      Sid    = "ReadAndUpdatePortfolio"
+      Effect = "Allow"
+      # PutItem is needed for the PNUM#{n} and PNUM#main pointer records the
+      # generator writes when allocating a portfolio's permanent public number.
+      Action   = ["dynamodb:GetItem", "dynamodb:UpdateItem", "dynamodb:PutItem"]
       Resource = var.dynamodb_table_arn
     }]
   })
@@ -2535,6 +2537,22 @@ resource "aws_iam_role_policy" "profile_cognito" {
   })
 }
 
+resource "aws_iam_role_policy" "profile_cloudfront" {
+  name = "cloudfront-invalidate"
+  role = aws_iam_role.profile.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      # Changing the main portfolio repoints the bare /u/{username}, which must
+      # be purged from the edge or the previous one keeps being served.
+      Sid      = "InvalidateMainPortfolioPath"
+      Effect   = "Allow"
+      Action   = ["cloudfront:CreateInvalidation"]
+      Resource = var.cloudfront_distribution_arn
+    }]
+  })
+}
+
 resource "aws_lambda_function" "profile" {
   filename         = data.archive_file.get_portfolio.output_path
   function_name    = "${var.name_prefix}-profile"
@@ -2553,12 +2571,13 @@ resource "aws_lambda_function" "profile" {
       USER_POOL_ID                  = var.user_pool_id
       ALLOWED_ORIGIN                = var.allowed_origin
       USERNAME_CHANGE_COOLDOWN_DAYS = var.username_change_cooldown_days
+      CLOUDFRONT_DISTRIBUTION_ID    = var.cloudfront_distribution_id
       ENVIRONMENT                   = var.environment
     }
   }
 
   tags = merge(var.tags, {
-    Name     = "${var.name_prefix}-profile"
+    Name = "${var.name_prefix}-profile"
     # AWS tag values allow only [letters numbers whitespace _ . : / = + - @].
     # Apostrophes, parentheses and commas fail CreateFunction.
     Function = "Read and edit the callers own profile - username and display name"

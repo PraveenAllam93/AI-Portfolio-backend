@@ -13,7 +13,12 @@
  *     (scroll reveals, nav toggles) that a script-src 'none' policy would break.
  */
 
-import { DynamoDBClient, GetItemCommand, UpdateItemCommand } from '@aws-sdk/client-dynamodb';
+import {
+	DynamoDBClient,
+	GetItemCommand,
+	PutItemCommand,
+	UpdateItemCommand,
+} from '@aws-sdk/client-dynamodb';
 import { marshall, unmarshall } from '@aws-sdk/util-dynamodb';
 import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
 import { CloudFrontClient, CreateInvalidationCommand } from '@aws-sdk/client-cloudfront';
@@ -26,6 +31,121 @@ const cf = new CloudFrontClient({});
 const PORTFOLIO_BUCKET = process.env.PORTFOLIO_BUCKET!;
 const DYNAMODB_TABLE = process.env.DYNAMODB_TABLE!;
 const CLOUDFRONT_DISTRIBUTION_ID = process.env.CLOUDFRONT_DISTRIBUTION_ID ?? '';
+
+/**
+ * Reserve this portfolio's permanent public number, and make it the user's
+ * main portfolio if they do not have one yet.
+ *
+ * The number is allocated once and never reassigned — see the "Portfolio
+ * numbers" note in src/lambdas/auth/username_utils.py, which is the authority
+ * for this record layout. Deleting a portfolio leaves a gap on purpose:
+ * renumbering would repoint links that have already been shared.
+ *
+ * Allocation happens here, at publish, rather than at portfolio creation, for
+ * two reasons: only published portfolios are reachable by URL, and a guest's
+ * portfolio is re-published under the REAL user during the claim flow, so
+ * allocating here draws the number from the correct user's counter instead of
+ * carrying a guest number that could collide.
+ *
+ * Returns null on failure — publishing must not fail because numbering did.
+ */
+async function ensurePortfolioNumber(
+	userId: string,
+	uploadId: string,
+	existing: number | undefined,
+	correlationId: string
+): Promise<number | null> {
+	if (existing) return existing;
+
+	try {
+		// ADD is atomic and returns the post-increment value, so simultaneous
+		// publishes cannot be handed the same number.
+		const bumped = await dynamodb.send(
+			new UpdateItemCommand({
+				TableName: DYNAMODB_TABLE,
+				Key: marshall({ PK: `USER#${userId}`, SK: 'COUNTER#PORTFOLIO' }),
+				UpdateExpression: 'ADD #seq :one',
+				ExpressionAttributeNames: { '#seq': 'seq' },
+				ExpressionAttributeValues: marshall({ ':one': 1 }),
+				ReturnValues: 'UPDATED_NEW',
+			})
+		);
+		const number = Number(unmarshall(bumped.Attributes ?? {}).seq);
+		if (!number) return null;
+
+		// number -> uploadId pointer, resolved by the edge gate.
+		await dynamodb.send(
+			new PutItemCommand({
+				TableName: DYNAMODB_TABLE,
+				Item: marshall({
+					PK: `USER#${userId}`,
+					SK: `PNUM#${number}`,
+					uploadId,
+					portfolioNumber: number,
+					createdAt: new Date().toISOString(),
+				}),
+			})
+		);
+
+		await dynamodb.send(
+			new UpdateItemCommand({
+				TableName: DYNAMODB_TABLE,
+				Key: marshall({ PK: `USER#${userId}`, SK: `PORTFOLIO#${uploadId}` }),
+				UpdateExpression: 'SET portfolioNumber = :n',
+				ExpressionAttributeValues: marshall({ ':n': number }),
+			})
+		);
+
+		// First portfolio published becomes the main one, served at the bare
+		// /u/{username}. Conditional so it never steals the slot from a later
+		// portfolio the user has explicitly chosen.
+		await dynamodb
+			.send(
+				new PutItemCommand({
+					TableName: DYNAMODB_TABLE,
+					Item: marshall({
+						PK: `USER#${userId}`,
+						SK: 'PNUM#main',
+						uploadId,
+						portfolioNumber: number,
+						createdAt: new Date().toISOString(),
+					}),
+					ConditionExpression: 'attribute_not_exists(PK)',
+				})
+			)
+			.catch(() => {
+				/* already set — the user has a main portfolio, leave it alone */
+			});
+
+		log('INFO', 'Portfolio number allocated', { correlationId, userId, uploadId, number });
+		return number;
+	} catch (err) {
+		log('ERROR', 'Portfolio number allocation failed (non-fatal)', {
+			correlationId,
+			userId,
+			uploadId,
+			error: String(err),
+		});
+		return null;
+	}
+}
+
+/** The owner's public handle, used to build viewer-facing invalidation paths. */
+async function getUsername(userId: string): Promise<string | null> {
+	try {
+		const res = await dynamodb.send(
+			new GetItemCommand({
+				TableName: DYNAMODB_TABLE,
+				Key: marshall({ PK: `USER#${userId}`, SK: 'PROFILE' }),
+				ProjectionExpression: 'username',
+			})
+		);
+		if (!res.Item) return null;
+		return (unmarshall(res.Item).username as string) ?? null;
+	} catch {
+		return null;
+	}
+}
 
 const DEFAULT_SECTION_ORDER = [
 	'experience',
@@ -183,13 +303,32 @@ export async function lambdaHandler(event: LambdaEvent, context: LambdaContext):
 
 		const basePath = target === 'draft' ? `${userId}/${uploadId}/draft` : `${userId}/${uploadId}/v${version}`;
 
+		// Drafts must never be cached — the owner edits and re-renders constantly,
+		// and a stale preview looks like a lost edit.
+		//
+		// Published pages ARE cached at the edge: `s-maxage` lets CloudFront serve
+		// them without touching S3 or running the access-gate Lambda on every hit,
+		// while `max-age=0` keeps browsers revalidating so a republish shows up
+		// immediately for someone who already has the page open.
+		//
+		// Publishing issues an invalidation (below), so updates are normally
+		// instant. The 5-minute ceiling is deliberately short as a BACKSTOP: the
+		// share URL is now stable, so several actions (publish, activate version,
+		// toggle live, change main portfolio) all have to invalidate it. If any
+		// one of them is ever missed, content self-heals in minutes rather than
+		// being wrong until the TTL expires.
+		const cacheControl =
+			target === 'draft'
+				? 'no-cache, max-age=0, s-maxage=0, must-revalidate'
+				: 'public, max-age=0, s-maxage=300, must-revalidate';
+
 		await s3.send(
 			new PutObjectCommand({
 				Bucket: PORTFOLIO_BUCKET,
 				Key: `${basePath}/index.html`,
 				Body: Buffer.from(portfolioHtml, 'utf-8'),
 				ContentType: 'text/html',
-				CacheControl: 'no-cache, max-age=0, s-maxage=0, must-revalidate',
+				CacheControl: cacheControl,
 			})
 		);
 
@@ -197,6 +336,17 @@ export async function lambdaHandler(event: LambdaEvent, context: LambdaContext):
 
 		if (target !== 'draft') {
 			const versionId = `v${version}`;
+
+			// Public identity of this portfolio: its permanent number and the
+			// owner's handle. Both are needed to invalidate the viewer-facing URLs
+			// below, and the number is what /u/{username}/{n} resolves through.
+			const portfolioNumber = await ensurePortfolioNumber(
+				userId,
+				uploadId,
+				item.portfolioNumber as number | undefined,
+				correlationId
+			);
+			const username = await getUsername(userId);
 
 			// Write an immutable version snapshot — used by list/activate/delete APIs
 			await dynamodb.send(
@@ -254,11 +404,28 @@ export async function lambdaHandler(event: LambdaEvent, context: LambdaContext):
 			// invalidation paths for no benefit. Only invalidate on publish.
 			if (CLOUDFRONT_DISTRIBUTION_ID && target !== 'draft') {
 				try {
+					// CloudFront keys its cache on the URI the VIEWER requested, not
+					// the one the access gate rewrites to. Invalidating only the
+					// origin path (/{userId}/{uploadId}/*) therefore never matches a
+					// shared link, which is addressed as /u/{username}/... — that was
+					// silently leaving published changes stale at the edge.
+					const paths = [`/${userId}/${uploadId}/*`];
+					if (username) {
+						if (portfolioNumber) {
+							paths.push(`/u/${username}/${portfolioNumber}`);
+							paths.push(`/u/${username}/${portfolioNumber}/*`);
+						}
+						// The bare handle serves the main portfolio; refresh it too in
+						// case this publish is the main one.
+						paths.push(`/u/${username}`);
+						paths.push(`/u/${username}/${uploadId}/*`);
+					}
+
 					await cf.send(
 						new CreateInvalidationCommand({
 							DistributionId: CLOUDFRONT_DISTRIBUTION_ID,
 							InvalidationBatch: {
-								Paths: { Quantity: 1, Items: [`/${userId}/${uploadId}/*`] },
+								Paths: { Quantity: paths.length, Items: paths },
 								CallerReference: correlationId,
 							},
 						})
@@ -266,7 +433,7 @@ export async function lambdaHandler(event: LambdaEvent, context: LambdaContext):
 					log('INFO', 'CloudFront cache invalidated', {
 						correlationId,
 						userId,
-						path: `/${userId}/*`,
+						paths,
 					});
 				} catch (cfErr) {
 					// Non-fatal: portfolio is already written to S3.

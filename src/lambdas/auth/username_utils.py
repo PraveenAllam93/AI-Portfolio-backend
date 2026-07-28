@@ -76,7 +76,7 @@ RESERVED: frozenset = frozenset({
 
 
 def normalize(raw: str) -> str:
-    """Canonical form used as the DynamoDB key. Case- and whitespace-insensitive."""
+    """Canonical DynamoDB key form. Case- and whitespace-insensitive."""
     return (raw or '').strip().lower()
 
 
@@ -123,6 +123,115 @@ def username_key(username: str) -> dict:
 def profile_key(user_id: str) -> dict:
     """Primary key of the reverse (userId -> username) record."""
     return {'PK': f'USER#{user_id}', 'SK': 'PROFILE'}
+
+
+# ---------------------------------------------------------------------------
+# Portfolio numbers
+# ---------------------------------------------------------------------------
+#
+# Each portfolio gets a small per-user number so it can be shared as
+# /u/{username}/{n} instead of exposing a UUID and a version.
+#
+# The number is PERMANENT: allocated once at creation from a monotonic counter
+# and never reassigned. Deleting portfolio 2 leaves the sequence 1, 3, 4 — the
+# gap is deliberate. Renumbering would silently repoint a link that someone has
+# already shared at a different portfolio, which is worse than a gap.
+#
+# It also makes the public URL stable across republishes: /u/praveen/1 always
+# resolves to whatever the active version currently is, so a shared link never
+# goes stale the way /…/v4 did.
+
+
+def counter_key(user_id: str) -> dict:
+    """Primary key of the per-user portfolio-number counter."""
+    return {'PK': f'USER#{user_id}', 'SK': 'COUNTER#PORTFOLIO'}
+
+
+def number_key(user_id: str, number: int) -> dict:
+    """Primary key of the number -> uploadId pointer record."""
+    return {'PK': f'USER#{user_id}', 'SK': f'PNUM#{number}'}
+
+
+def allocate_number(table, user_id: str) -> int:
+    """
+    Reserve the next portfolio number for this user.
+
+    DynamoDB's ADD on a number is atomic and returns the post-increment value,
+    so two portfolios created at the same instant cannot receive the same
+    number. There is no read-then-write here for exactly that reason.
+    """
+    result = table.update_item(
+        Key=counter_key(user_id),
+        UpdateExpression='ADD #seq :one',
+        ExpressionAttributeNames={'#seq': 'seq'},
+        ExpressionAttributeValues={':one': 1},
+        ReturnValues='UPDATED_NEW',
+    )
+    return int(result['Attributes']['seq'])
+
+
+def link_number(table, user_id: str, number: int, upload_id: str) -> None:
+    """Write the number -> uploadId pointer the edge resolves against."""
+    table.put_item(
+        Item={
+            **number_key(user_id, number),
+            'uploadId': upload_id,
+            'portfolioNumber': number,
+            'createdAt': _now(),
+        }
+    )
+
+
+def public_path_for_number(
+    username: str | None,
+    number: int | None,
+) -> str | None:
+    """
+    Short public path for a portfolio: u/{username}/{n}.
+
+    Returns None when either part is missing, so callers fall back to the
+    longer versioned form rather than emitting a broken link.
+    """
+    if not username or not number:
+        return None
+    return f'u/{normalize(username)}/{int(number)}'
+
+
+def invalidation_paths(
+    username: str | None,
+    user_id: str,
+    upload_id: str,
+    number: int | None = None,
+) -> list[str]:
+    """
+    Every viewer-facing path that must be purged when a portfolio changes.
+
+    CloudFront keys its cache on the URI the VIEWER requested, not the one the
+    access gate rewrites to internally. Invalidating only the origin path
+    (/{userId}/{uploadId}/*) therefore never matches a shared link, which is
+    addressed as /u/{username}/... — a portfolio could be taken offline and
+    still be served from the edge.
+
+    Centralised here because four different call sites (publish, activate
+    version, toggle live, change main portfolio) all need the same list, and
+    the stable share URL means a missed path shows stale content rather than
+    simply the previous version.
+    """
+    paths = [f'/{user_id}/{upload_id}/*']
+
+    if not username:
+        return paths
+
+    handle = normalize(username)
+    if number:
+        paths.append(f'/u/{handle}/{number}')
+        paths.append(f'/u/{handle}/{number}/*')
+    # The bare handle serves this user's main portfolio; purge it too, since
+    # this portfolio may be the main one.
+    paths.append(f'/u/{handle}')
+    paths.append(f'/u/{handle}/{upload_id}/*')
+
+    return paths
 
 
 def public_path(portfolio_path: str, username: str | None) -> str | None:
@@ -231,7 +340,7 @@ def claim(table, username: str, user_id: str, name: str = '') -> None:
         raise UsernameTaken(lower) from exc
 
     # Reverse record. Written second and non-conditionally: if this fails the
-    # forward claim is already durable, and the caller's error path releases it.
+    # forward claim is already durable and the caller's error path frees it.
     #
     # An update (not a put) because this record may already exist — a claimed
     # guest keeps its display name and original createdAt through its first
@@ -300,7 +409,10 @@ def rename(client, table_name: str, user_id: str, old: str, new: str) -> None:
                     'SK': {'S': 'PROFILE'},
                 },
                 'UpdateExpression': 'SET #tomb = :true, #ttl = :ttl',
-                'ExpressionAttributeNames': {'#tomb': 'isTombstone', '#ttl': 'ttl'},
+                'ExpressionAttributeNames': {
+                    '#tomb': 'isTombstone',
+                    '#ttl': 'ttl',
+                },
                 'ExpressionAttributeValues': {
                     ':true': {'BOOL': True},
                     ':ttl': {'N': str(tombstone_expiry())},

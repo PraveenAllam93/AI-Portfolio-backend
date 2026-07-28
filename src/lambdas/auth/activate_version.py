@@ -9,6 +9,8 @@ import os
 import boto3
 from datetime import datetime, timezone
 
+import username_utils as uu
+
 dynamodb = boto3.resource('dynamodb')
 cf_client = boto3.client('cloudfront')
 DYNAMODB_TABLE = os.environ.get('DYNAMODB_TABLE')
@@ -56,13 +58,25 @@ def lambda_handler(event, context):
             }
         )
 
-        # Invalidate CloudFront cache — non-fatal
+        # Invalidate CloudFront cache — non-fatal.
+        # The share URL (/u/{username}/{n}) is stable and resolves to whatever
+        # version is active, so switching versions changes nothing about the URL
+        # and the edge would keep serving the old one without this purge.
         if CLOUDFRONT_DISTRIBUTION_ID:
             try:
+                portfolio_res = table.get_item(
+                    Key={'PK': f'USER#{user_id}', 'SK': f'PORTFOLIO#{upload_id}'},
+                    ProjectionExpression='portfolioNumber',
+                )
+                raw_number = (portfolio_res.get('Item') or {}).get('portfolioNumber')
+                portfolio_number = int(raw_number) if raw_number is not None else None
+                username = uu.get_profile(table, user_id).get('username')
+                paths = uu.invalidation_paths(username, user_id, upload_id, portfolio_number)
+
                 cf_client.create_invalidation(
                     DistributionId=CLOUDFRONT_DISTRIBUTION_ID,
                     InvalidationBatch={
-                        'Paths': {'Quantity': 1, 'Items': [f'/{user_id}/{upload_id}/*']},
+                        'Paths': {'Quantity': len(paths), 'Items': paths},
                         'CallerReference': correlation_id
                     }
                 )

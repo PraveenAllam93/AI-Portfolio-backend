@@ -38,6 +38,17 @@ _USERNAME_PATTERN = re.compile(
     r'^/u/([A-Za-z0-9][A-Za-z0-9_-]{1,28}[A-Za-z0-9])/(.+)$'
 )
 
+# The short, shareable forms:
+#   /u/{username}        -> the user's main portfolio
+#   /u/{username}/{n}    -> that user's portfolio number n
+# Both resolve to whatever version is currently active, so the link a user
+# shares stays correct across republishes instead of pinning to /v4.
+# Checked BEFORE _USERNAME_PATTERN, which would otherwise swallow "/1" as a
+# literal path segment.
+_SHORT_PATTERN = re.compile(
+    r'^/u/([A-Za-z0-9][A-Za-z0-9_-]{1,28}[A-Za-z0-9])(?:/(\d+))?/?$'
+)
+
 # Lambda@Edge does not support environment variables.
 # These values are baked in at deploy time via Terraform templatefile().
 _TABLE = '${dynamodb_table}'
@@ -62,9 +73,78 @@ def _resolve_username(username):
     return result.get('Item', {}).get('userId', {}).get('S')
 
 
+def _resolve_pointer(user_id, sort_key):
+    """PNUM#{n} / PNUM#main -> uploadId, or None. Fails closed on error."""
+    try:
+        result = _dynamodb.get_item(
+            TableName=_TABLE,
+            Key={
+                'PK': {'S': 'USER#' + user_id},
+                'SK': {'S': sort_key},
+            },
+            ProjectionExpression='uploadId',
+        )
+    except Exception:
+        return None
+    return result.get('Item', {}).get('uploadId', {}).get('S')
+
+
+def _portfolio_state(user_id, upload_id):
+    """(isLive, activeVersion) for a portfolio, or None. Fails closed."""
+    try:
+        result = _dynamodb.get_item(
+            TableName=_TABLE,
+            Key={
+                'PK': {'S': 'USER#' + user_id},
+                'SK': {'S': 'PORTFOLIO#' + upload_id},
+            },
+            ProjectionExpression='isLive, activeVersion',
+        )
+    except Exception:
+        return None
+    item = result.get('Item')
+    if not item:
+        return None
+    return (
+        item.get('isLive', {}).get('BOOL', False),
+        item.get('activeVersion', {}).get('S', ''),
+    )
+
+
 def lambda_handler(event, context):
     request = event['Records'][0]['cf']['request']
     uri = request['uri']
+
+    # Short public forms: /u/{username} and /u/{username}/{n}.
+    # These carry no version, so the active one is looked up and the URI is
+    # rewritten to the real object key. Resolved here in full rather than
+    # falling through to the generic check below, which would repeat the same
+    # DynamoDB read.
+    short_match = _SHORT_PATTERN.match(uri)
+    if short_match:
+        username, number = short_match.groups()
+
+        user_id = _resolve_username(username.lower())
+        if not user_id:
+            return _forbidden()
+
+        pointer = 'PNUM#' + number if number else 'PNUM#main'
+        upload_id = _resolve_pointer(user_id, pointer)
+        if not upload_id:
+            return _forbidden()
+
+        state = _portfolio_state(user_id, upload_id)
+        if not state:
+            return _forbidden()
+
+        is_live, active_version = state
+        if not is_live or not active_version:
+            return _forbidden()
+
+        request['uri'] = (
+            '/' + user_id + '/' + upload_id + '/' + active_version + '/index.html'
+        )
+        return request
 
     # Public username form: resolve to the owner and rewrite to the S3 layout.
     # An unknown username is denied rather than passed through, so a bad handle

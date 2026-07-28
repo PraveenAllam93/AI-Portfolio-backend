@@ -13,6 +13,8 @@ import boto3
 from datetime import datetime, timezone
 from urllib.parse import unquote
 
+import username_utils as uu
+
 dynamodb = boto3.resource('dynamodb')
 cf_client = boto3.client('cloudfront')
 DYNAMODB_TABLE = os.environ.get('DYNAMODB_TABLE')
@@ -68,13 +70,17 @@ def lambda_handler(event, context):
     try:
         table = dynamodb.Table(DYNAMODB_TABLE)
 
-        # Verify portfolio exists
+        # Verify portfolio exists. portfolioNumber comes along for the ride so
+        # the cache invalidation below can target /u/{username}/{n}.
         result = table.get_item(
             Key={'PK': f'USER#{path_user_id}', 'SK': f'PORTFOLIO#{upload_id}'},
-            ProjectionExpression='uploadId',
+            ProjectionExpression='uploadId, portfolioNumber',
         )
         if 'Item' not in result:
             return _response(404, {'error': 'Portfolio not found'})
+
+        raw_number = result['Item'].get('portfolioNumber')
+        portfolio_number = int(raw_number) if raw_number is not None else None
 
         table.update_item(
             Key={'PK': f'USER#{path_user_id}', 'SK': f'PORTFOLIO#{upload_id}'},
@@ -86,12 +92,18 @@ def lambda_handler(event, context):
         )
 
         # Invalidate CDN cache so Lambda@Edge re-checks access on next request.
+        # Taking a portfolio offline MUST purge the viewer-facing /u/ paths, or
+        # the edge keeps serving a portfolio the owner has just unpublished.
         if CLOUDFRONT_DISTRIBUTION_ID:
             try:
+                username = uu.get_profile(table, path_user_id).get('username')
+                paths = uu.invalidation_paths(
+                    username, path_user_id, upload_id, portfolio_number
+                )
                 cf_client.create_invalidation(
                     DistributionId=CLOUDFRONT_DISTRIBUTION_ID,
                     InvalidationBatch={
-                        'Paths': {'Quantity': 1, 'Items': [f'/{path_user_id}/{upload_id}/*']},
+                        'Paths': {'Quantity': len(paths), 'Items': paths},
                         'CallerReference': correlation_id,
                     },
                 )

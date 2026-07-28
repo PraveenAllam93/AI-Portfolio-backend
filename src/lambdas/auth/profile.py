@@ -25,9 +25,11 @@ import username_utils as uu
 dynamodb = boto3.resource('dynamodb')
 dynamodb_client = boto3.client('dynamodb')
 cognito = boto3.client('cognito-idp')
+cf_client = boto3.client('cloudfront')
 
 DYNAMODB_TABLE = os.environ.get('DYNAMODB_TABLE')
 USER_POOL_ID = os.environ.get('USER_POOL_ID')
+CLOUDFRONT_DISTRIBUTION_ID = os.environ.get('CLOUDFRONT_DISTRIBUTION_ID', '')
 ALLOWED_ORIGIN = os.environ.get('ALLOWED_ORIGIN', '*')
 COOLDOWN_DAYS = int(os.environ.get('USERNAME_CHANGE_COOLDOWN_DAYS', '30'))
 
@@ -129,12 +131,27 @@ def _get(user_id: str, correlation_id: str) -> dict:
 
     if not profile:
         # Guests, and any account created before usernames existed.
-        return _response(200, {'username': None, 'name': '', 'canChangeUsernameAt': None})
+        return _response(200, {
+            'username': None, 'name': '', 'canChangeUsernameAt': None,
+            'mainPortfolioNumber': None,
+        })
+
+    main_number = None
+    try:
+        table = dynamodb.Table(DYNAMODB_TABLE)
+        main = table.get_item(Key={'PK': f'USER#{user_id}', 'SK': 'PNUM#main'}).get('Item')
+        if main and main.get('portfolioNumber') is not None:
+            main_number = int(main['portfolioNumber'])
+    except Exception as e:
+        # Non-fatal: the rest of the profile is still useful.
+        _log('WARNING', 'Main portfolio read failed',
+             correlationId=correlation_id, userId=user_id, error=str(e))
 
     return _response(200, {
         'username': profile.get('username'),
         'name': profile.get('name', ''),
         'canChangeUsernameAt': _next_change_allowed(profile),
+        'mainPortfolioNumber': main_number,
     })
 
 
@@ -164,9 +181,12 @@ def _patch(event, user_id: str, correlation_id: str) -> dict:
 
     wants_username = 'username' in body
     wants_name = 'name' in body
+    wants_main = 'mainPortfolioNumber' in body
 
-    if not wants_username and not wants_name:
-        return _response(400, {'error': 'Provide "username" and/or "name".'})
+    if not wants_username and not wants_name and not wants_main:
+        return _response(400, {
+            'error': 'Provide "username", "name" and/or "mainPortfolioNumber".'
+        })
 
     table = dynamodb.Table(DYNAMODB_TABLE)
 
@@ -196,6 +216,59 @@ def _patch(event, user_id: str, correlation_id: str) -> dict:
             _log('ERROR', 'Display name update failed',
                  correlationId=correlation_id, userId=user_id, error=str(e))
             return _response(500, {'error': 'Internal server error'})
+
+    if wants_main:
+        number = body.get('mainPortfolioNumber')
+        if not isinstance(number, int) or number < 1:
+            return _response(400, {'error': 'mainPortfolioNumber must be a positive integer.'})
+
+        # Resolve through the caller's OWN pointer record. That both validates
+        # the number exists and guarantees the portfolio belongs to them —
+        # there is no way to point your handle at someone else's portfolio.
+        try:
+            pointer = table.get_item(Key=uu.number_key(user_id, number)).get('Item')
+        except Exception as e:
+            _log('ERROR', 'Main portfolio lookup failed',
+                 correlationId=correlation_id, userId=user_id, error=str(e))
+            return _response(500, {'error': 'Internal server error'})
+
+        if not pointer or not pointer.get('uploadId'):
+            return _response(404, {'error': f'You have no portfolio #{number}.'})
+
+        try:
+            table.put_item(Item={
+                'PK': f'USER#{user_id}',
+                'SK': 'PNUM#main',
+                'uploadId': pointer['uploadId'],
+                'portfolioNumber': number,
+                'updatedAt': datetime.now(timezone.utc).isoformat(),
+            })
+        except Exception as e:
+            _log('ERROR', 'Main portfolio update failed',
+                 correlationId=correlation_id, userId=user_id, error=str(e))
+            return _response(500, {'error': 'Internal server error'})
+
+        # The bare /u/{username} now resolves to a different portfolio; without
+        # this purge the edge keeps serving the previous main one.
+        if CLOUDFRONT_DISTRIBUTION_ID:
+            try:
+                handle = profile.get('username')
+                if handle:
+                    paths = [f'/u/{uu.normalize(handle)}']
+                    cf_client.create_invalidation(
+                        DistributionId=CLOUDFRONT_DISTRIBUTION_ID,
+                        InvalidationBatch={
+                            'Paths': {'Quantity': len(paths), 'Items': paths},
+                            'CallerReference': correlation_id,
+                        },
+                    )
+            except Exception as e:
+                # Non-fatal: the change is saved and the short TTL heals it.
+                _log('ERROR', 'CloudFront invalidation failed (non-fatal)',
+                     correlationId=correlation_id, userId=user_id, error=str(e))
+
+        _log('INFO', 'Main portfolio changed',
+             correlationId=correlation_id, userId=user_id, number=number)
 
     if not wants_username:
         return _response(200, {'status': 'saved', 'username': profile.get('username')})
