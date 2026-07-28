@@ -128,7 +128,7 @@ variable "allowed_file_extensions" {
 variable "allowed_mime_types" {
   description = "Allowed MIME types"
   type        = list(string)
-  default     = [
+  default = [
     "application/pdf",
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
   ]
@@ -197,4 +197,10 @@ variable "tags" {
   description = "Tags to apply to resources"
   type        = map(string)
   default     = {}
+}
+
+variable "username_change_cooldown_days" {
+  description = "Minimum days between username changes. Portfolio URLs embed the username, so every change breaks links already shared."
+  type        = string
+  default     = "30"
 }

@@ -148,7 +148,7 @@ variable "api_burst_limit" {
 variable "sqs_visibility_timeout" {
   description = "SQS message visibility timeout (seconds). Must be >= Lambda timeout."
   type        = number
-  default     = 310  # Must be > AI processing Lambda timeout (300s)
+  default     = 310 # Must be > AI processing Lambda timeout (300s)
 }
 
 variable "sqs_message_retention_days" {
@@ -215,4 +215,17 @@ variable "allowed_origin" {
   description = "CORS allowed origin for API responses. Set to your frontend domain in prod (e.g. https://app.example.com). '*' is fine for dev."
   type        = string
   default     = "*"
+}
+
+# Anonymous "Try for free" guests
+variable "guest_email_domain" {
+  description = "Reserved, non-routable email domain used for anonymous guest Cognito users (guest-<uuid>@<domain>). Guests are skipped by the PreSignUp username claim. Must match the frontend GUEST_EMAIL_DOMAIN."
+  type        = string
+  default     = "guest.aifolio.internal"
+}
+
+variable "username_change_cooldown_days" {
+  description = "Minimum days between username changes. Portfolio URLs embed the username, so every change breaks links already shared."
+  type        = string
+  default     = "30"
 }

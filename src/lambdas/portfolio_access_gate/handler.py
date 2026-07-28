@@ -5,9 +5,19 @@ Attached to the CloudFront distribution on the Origin Request event.
 Fires only on cache misses — zero added latency for cached responses.
 
 Rules:
-  - /draft/ paths   → always 403 (owners preview through edit page, never public URL)
-  - /v{N}/ paths    → allowed only if portfolio isLive=true AND version == activeVersion
-  - everything else → pass through unchanged (error.html, assets, etc.)
+  - /u/{username}/... → resolved to the owner's userId, then treated as below
+  - /draft/ paths     → always 403 (owners preview through edit page, never public URL)
+  - /v{N}/ paths      → allowed only if portfolio isLive=true AND version == activeVersion
+  - everything else   → pass through unchanged (error.html, assets, etc.)
+
+Public portfolio URLs are addressed by username, but S3 objects are stored
+under the immutable userId. This function is where the two meet: it resolves
+USERNAME#{name} -> userId and rewrites the request URI before the origin fetch.
+Keeping the translation here (rather than in the S3 key layout) is what makes a
+username change a single DynamoDB write instead of a bulk object copy.
+
+Renamed-away usernames remain resolvable as TTL'd tombstones, so links shared
+before a rename keep working for the tombstone's lifetime.
 
 Deployment note: must be deployed in us-east-1 and referenced by a versioned ARN.
 """
@@ -19,6 +29,15 @@ import boto3
 # Matches /{userId}/{uploadId}/(v{N}|draft)/index.html
 _PATTERN = re.compile(r'^/([^/]+)/([^/]+)/(v\d+|draft)/index\.html$')
 
+# Matches any /u/{username}/... path — the public form.
+# Deliberately matches the whole subtree, not just index.html, so that assets
+# referenced with a relative path resolve too. Username charset mirrors
+# username_utils._FORMAT_RE, but accepts any case: handles are stored and
+# looked up lowercased, so a capitalised URL must resolve to the same portfolio.
+_USERNAME_PATTERN = re.compile(
+    r'^/u/([A-Za-z0-9][A-Za-z0-9_-]{1,28}[A-Za-z0-9])/(.+)$'
+)
+
 # Lambda@Edge does not support environment variables.
 # These values are baked in at deploy time via Terraform templatefile().
 _TABLE = '${dynamodb_table}'
@@ -27,9 +46,37 @@ _REGION = '${dynamodb_region}'
 _dynamodb = boto3.client('dynamodb', region_name=_REGION)
 
 
+def _resolve_username(username):
+    """USERNAME#{name} -> userId, or None if unknown. Fails closed on error."""
+    try:
+        result = _dynamodb.get_item(
+            TableName=_TABLE,
+            Key={
+                'PK': {'S': 'USERNAME#' + username},
+                'SK': {'S': 'PROFILE'},
+            },
+            ProjectionExpression='userId',
+        )
+    except Exception:
+        return None
+    return result.get('Item', {}).get('userId', {}).get('S')
+
+
 def lambda_handler(event, context):
     request = event['Records'][0]['cf']['request']
     uri = request['uri']
+
+    # Public username form: resolve to the owner and rewrite to the S3 layout.
+    # An unknown username is denied rather than passed through, so a bad handle
+    # cannot be used to probe the raw userId namespace.
+    username_match = _USERNAME_PATTERN.match(uri)
+    if username_match:
+        username, rest = username_match.groups()
+        user_id = _resolve_username(username.lower())
+        if not user_id:
+            return _forbidden()
+        uri = '/' + user_id + '/' + rest
+        request['uri'] = uri
 
     match = _PATTERN.match(uri)
     if not match:

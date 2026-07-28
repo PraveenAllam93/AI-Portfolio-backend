@@ -14,6 +14,8 @@ import boto3
 from boto3.dynamodb.conditions import Key
 from urllib.parse import unquote
 
+import username_utils as uu
+
 dynamodb = boto3.resource('dynamodb')
 DYNAMODB_TABLE = os.environ.get('DYNAMODB_TABLE')
 CLOUDFRONT_URL = os.environ.get('CLOUDFRONT_URL', '').rstrip('/')
@@ -62,6 +64,9 @@ def lambda_handler(event, context):
     try:
         table = dynamodb.Table(DYNAMODB_TABLE)
 
+        # Public URLs are addressed by username, so resolve it once up front.
+        username = uu.get_profile(table, path_user_id).get('username')
+
         # Query all PORTFOLIO# records for this user, paginating through all pages
         items = []
         query_kwargs = dict(
@@ -88,15 +93,18 @@ def lambda_handler(event, context):
             portfolio_path = item.get('portfolioPath', '')
             active_version = item.get('activeVersion')
 
+            public = uu.public_path(portfolio_path, username)
+
             portfolio_url = None
-            if CLOUDFRONT_URL and portfolio_path and active_version:
-                portfolio_url = f'{CLOUDFRONT_URL}/{portfolio_path}/index.html'
+            if CLOUDFRONT_URL and public and active_version:
+                portfolio_url = f'{CLOUDFRONT_URL}/{public}/index.html'
 
             portfolios.append({
                 'uploadId': upload_id,
                 'templateId': item.get('templateId', 'minimal'),
                 'status': item.get('status'),
                 'portfolioPath': portfolio_path,
+                'publicPath': public,
                 'activeVersion': active_version,
                 'portfolioUrl': portfolio_url,
                 'isLive': item.get('isLive', False),

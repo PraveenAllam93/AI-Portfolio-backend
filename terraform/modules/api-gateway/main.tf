@@ -252,10 +252,10 @@ resource "aws_api_gateway_method" "options_portfolio_id" {
 }
 
 resource "aws_api_gateway_integration" "options_portfolio_id" {
-  rest_api_id = aws_api_gateway_rest_api.main.id
-  resource_id = aws_api_gateway_resource.portfolio_id.id
-  http_method = aws_api_gateway_method.options_portfolio_id.http_method
-  type        = "MOCK"
+  rest_api_id       = aws_api_gateway_rest_api.main.id
+  resource_id       = aws_api_gateway_resource.portfolio_id.id
+  http_method       = aws_api_gateway_method.options_portfolio_id.http_method
+  type              = "MOCK"
   request_templates = { "application/json" = "{\"statusCode\": 200}" }
 }
 
@@ -361,10 +361,10 @@ resource "aws_api_gateway_method" "options_portfolio_upload_id" {
 }
 
 resource "aws_api_gateway_integration" "options_portfolio_upload_id" {
-  rest_api_id = aws_api_gateway_rest_api.main.id
-  resource_id = aws_api_gateway_resource.portfolio_upload_id.id
-  http_method = aws_api_gateway_method.options_portfolio_upload_id.http_method
-  type        = "MOCK"
+  rest_api_id       = aws_api_gateway_rest_api.main.id
+  resource_id       = aws_api_gateway_resource.portfolio_upload_id.id
+  http_method       = aws_api_gateway_method.options_portfolio_upload_id.http_method
+  type              = "MOCK"
   request_templates = { "application/json" = "{\"statusCode\": 200}" }
 }
 
@@ -686,10 +686,10 @@ resource "aws_api_gateway_method" "options_portfolio_analytics" {
 }
 
 resource "aws_api_gateway_integration" "options_portfolio_analytics" {
-  rest_api_id = aws_api_gateway_rest_api.main.id
-  resource_id = aws_api_gateway_resource.portfolio_analytics.id
-  http_method = aws_api_gateway_method.options_portfolio_analytics.http_method
-  type        = "MOCK"
+  rest_api_id       = aws_api_gateway_rest_api.main.id
+  resource_id       = aws_api_gateway_resource.portfolio_analytics.id
+  http_method       = aws_api_gateway_method.options_portfolio_analytics.http_method
+  type              = "MOCK"
   request_templates = { "application/json" = "{\"statusCode\": 200}" }
 }
 
@@ -726,10 +726,10 @@ resource "aws_api_gateway_method" "options_portfolio_content" {
 }
 
 resource "aws_api_gateway_integration" "options_portfolio_content" {
-  rest_api_id = aws_api_gateway_rest_api.main.id
-  resource_id = aws_api_gateway_resource.portfolio_content.id
-  http_method = aws_api_gateway_method.options_portfolio_content.http_method
-  type        = "MOCK"
+  rest_api_id       = aws_api_gateway_rest_api.main.id
+  resource_id       = aws_api_gateway_resource.portfolio_content.id
+  http_method       = aws_api_gateway_method.options_portfolio_content.http_method
+  type              = "MOCK"
   request_templates = { "application/json" = "{\"statusCode\": 200}" }
 }
 
@@ -766,10 +766,10 @@ resource "aws_api_gateway_method" "options_portfolio_ai_enhance" {
 }
 
 resource "aws_api_gateway_integration" "options_portfolio_ai_enhance" {
-  rest_api_id = aws_api_gateway_rest_api.main.id
-  resource_id = aws_api_gateway_resource.portfolio_ai_enhance.id
-  http_method = aws_api_gateway_method.options_portfolio_ai_enhance.http_method
-  type        = "MOCK"
+  rest_api_id       = aws_api_gateway_rest_api.main.id
+  resource_id       = aws_api_gateway_resource.portfolio_ai_enhance.id
+  http_method       = aws_api_gateway_method.options_portfolio_ai_enhance.http_method
+  type              = "MOCK"
   request_templates = { "application/json" = "{\"statusCode\": 200}" }
 }
 
@@ -843,10 +843,10 @@ resource "aws_api_gateway_method" "options_portfolio_custom_section" {
 }
 
 resource "aws_api_gateway_integration" "options_portfolio_custom_section" {
-  rest_api_id = aws_api_gateway_rest_api.main.id
-  resource_id = aws_api_gateway_resource.portfolio_custom_section.id
-  http_method = aws_api_gateway_method.options_portfolio_custom_section.http_method
-  type        = "MOCK"
+  rest_api_id       = aws_api_gateway_rest_api.main.id
+  resource_id       = aws_api_gateway_resource.portfolio_custom_section.id
+  http_method       = aws_api_gateway_method.options_portfolio_custom_section.http_method
+  type              = "MOCK"
   request_templates = { "application/json" = "{\"statusCode\": 200}" }
 }
 
@@ -922,10 +922,10 @@ resource "aws_api_gateway_method" "options_publish_portfolio" {
 }
 
 resource "aws_api_gateway_integration" "options_publish_portfolio" {
-  rest_api_id = aws_api_gateway_rest_api.main.id
-  resource_id = aws_api_gateway_resource.portfolio_publish.id
-  http_method = aws_api_gateway_method.options_publish_portfolio.http_method
-  type        = "MOCK"
+  rest_api_id       = aws_api_gateway_rest_api.main.id
+  resource_id       = aws_api_gateway_resource.portfolio_publish.id
+  http_method       = aws_api_gateway_method.options_publish_portfolio.http_method
+  type              = "MOCK"
   request_templates = { "application/json" = "{\"statusCode\": 200}" }
 }
 
@@ -1001,10 +1001,10 @@ resource "aws_api_gateway_method" "options_portfolio_image_upload_url" {
 }
 
 resource "aws_api_gateway_integration" "options_portfolio_image_upload_url" {
-  rest_api_id = aws_api_gateway_rest_api.main.id
-  resource_id = aws_api_gateway_resource.portfolio_image_upload_url.id
-  http_method = aws_api_gateway_method.options_portfolio_image_upload_url.http_method
-  type        = "MOCK"
+  rest_api_id       = aws_api_gateway_rest_api.main.id
+  resource_id       = aws_api_gateway_resource.portfolio_image_upload_url.id
+  http_method       = aws_api_gateway_method.options_portfolio_image_upload_url.http_method
+  type              = "MOCK"
   request_templates = { "application/json" = "{\"statusCode\": 200}" }
 }
 
@@ -1086,10 +1086,10 @@ resource "aws_api_gateway_method" "options_portfolio_project_image_generate" {
 }
 
 resource "aws_api_gateway_integration" "options_portfolio_project_image_generate" {
-  rest_api_id = aws_api_gateway_rest_api.main.id
-  resource_id = aws_api_gateway_resource.portfolio_project_image_generate.id
-  http_method = aws_api_gateway_method.options_portfolio_project_image_generate.http_method
-  type        = "MOCK"
+  rest_api_id       = aws_api_gateway_rest_api.main.id
+  resource_id       = aws_api_gateway_resource.portfolio_project_image_generate.id
+  http_method       = aws_api_gateway_method.options_portfolio_project_image_generate.http_method
+  type              = "MOCK"
   request_templates = { "application/json" = "{\"statusCode\": 200}" }
 }
 
@@ -1165,10 +1165,10 @@ resource "aws_api_gateway_method" "options_portfolio_toggle_live" {
 }
 
 resource "aws_api_gateway_integration" "options_portfolio_toggle_live" {
-  rest_api_id = aws_api_gateway_rest_api.main.id
-  resource_id = aws_api_gateway_resource.portfolio_toggle_live.id
-  http_method = aws_api_gateway_method.options_portfolio_toggle_live.http_method
-  type        = "MOCK"
+  rest_api_id       = aws_api_gateway_rest_api.main.id
+  resource_id       = aws_api_gateway_resource.portfolio_toggle_live.id
+  http_method       = aws_api_gateway_method.options_portfolio_toggle_live.http_method
+  type              = "MOCK"
   request_templates = { "application/json" = "{\"statusCode\": 200}" }
 }
 
@@ -1214,8 +1214,8 @@ resource "aws_api_gateway_method" "get_portfolio_preview_url" {
   authorizer_id = aws_api_gateway_authorizer.cognito.id
 
   request_parameters = {
-    "method.request.path.userId"          = true
-    "method.request.path.uploadId"        = true
+    "method.request.path.userId"           = true
+    "method.request.path.uploadId"         = true
     "method.request.querystring.versionId" = true
   }
 }
@@ -1245,10 +1245,10 @@ resource "aws_api_gateway_method" "options_portfolio_preview" {
 }
 
 resource "aws_api_gateway_integration" "options_portfolio_preview" {
-  rest_api_id = aws_api_gateway_rest_api.main.id
-  resource_id = aws_api_gateway_resource.portfolio_preview.id
-  http_method = aws_api_gateway_method.options_portfolio_preview.http_method
-  type        = "MOCK"
+  rest_api_id       = aws_api_gateway_rest_api.main.id
+  resource_id       = aws_api_gateway_resource.portfolio_preview.id
+  http_method       = aws_api_gateway_method.options_portfolio_preview.http_method
+  type              = "MOCK"
   request_templates = { "application/json" = "{\"statusCode\": 200}" }
 }
 
@@ -1330,10 +1330,10 @@ resource "aws_api_gateway_method" "options_interview_start" {
 }
 
 resource "aws_api_gateway_integration" "options_interview_start" {
-  rest_api_id = aws_api_gateway_rest_api.main.id
-  resource_id = aws_api_gateway_resource.interview_start.id
-  http_method = aws_api_gateway_method.options_interview_start.http_method
-  type        = "MOCK"
+  rest_api_id       = aws_api_gateway_rest_api.main.id
+  resource_id       = aws_api_gateway_resource.interview_start.id
+  http_method       = aws_api_gateway_method.options_interview_start.http_method
+  type              = "MOCK"
   request_templates = { "application/json" = "{\"statusCode\": 200}" }
 }
 
@@ -1401,10 +1401,10 @@ resource "aws_api_gateway_method" "options_interview_answer" {
 }
 
 resource "aws_api_gateway_integration" "options_interview_answer" {
-  rest_api_id = aws_api_gateway_rest_api.main.id
-  resource_id = aws_api_gateway_resource.interview_answer.id
-  http_method = aws_api_gateway_method.options_interview_answer.http_method
-  type        = "MOCK"
+  rest_api_id       = aws_api_gateway_rest_api.main.id
+  resource_id       = aws_api_gateway_resource.interview_answer.id
+  http_method       = aws_api_gateway_method.options_interview_answer.http_method
+  type              = "MOCK"
   request_templates = { "application/json" = "{\"statusCode\": 200}" }
 }
 
@@ -1472,10 +1472,10 @@ resource "aws_api_gateway_method" "options_interview_exit" {
 }
 
 resource "aws_api_gateway_integration" "options_interview_exit" {
-  rest_api_id = aws_api_gateway_rest_api.main.id
-  resource_id = aws_api_gateway_resource.interview_exit.id
-  http_method = aws_api_gateway_method.options_interview_exit.http_method
-  type        = "MOCK"
+  rest_api_id       = aws_api_gateway_rest_api.main.id
+  resource_id       = aws_api_gateway_resource.interview_exit.id
+  http_method       = aws_api_gateway_method.options_interview_exit.http_method
+  type              = "MOCK"
   request_templates = { "application/json" = "{\"statusCode\": 200}" }
 }
 
@@ -1550,10 +1550,10 @@ resource "aws_api_gateway_method" "options_interview_report" {
 }
 
 resource "aws_api_gateway_integration" "options_interview_report" {
-  rest_api_id = aws_api_gateway_rest_api.main.id
-  resource_id = aws_api_gateway_resource.interview_report.id
-  http_method = aws_api_gateway_method.options_interview_report.http_method
-  type        = "MOCK"
+  rest_api_id       = aws_api_gateway_rest_api.main.id
+  resource_id       = aws_api_gateway_resource.interview_report.id
+  http_method       = aws_api_gateway_method.options_interview_report.http_method
+  type              = "MOCK"
   request_templates = { "application/json" = "{\"statusCode\": 200}" }
 }
 
@@ -1621,10 +1621,10 @@ resource "aws_api_gateway_method" "options_interview_sessions" {
 }
 
 resource "aws_api_gateway_integration" "options_interview_sessions" {
-  rest_api_id = aws_api_gateway_rest_api.main.id
-  resource_id = aws_api_gateway_resource.interview_sessions.id
-  http_method = aws_api_gateway_method.options_interview_sessions.http_method
-  type        = "MOCK"
+  rest_api_id       = aws_api_gateway_rest_api.main.id
+  resource_id       = aws_api_gateway_resource.interview_sessions.id
+  http_method       = aws_api_gateway_method.options_interview_sessions.http_method
+  type              = "MOCK"
   request_templates = { "application/json" = "{\"statusCode\": 200}" }
 }
 
@@ -1703,10 +1703,10 @@ resource "aws_api_gateway_method" "options_guest_claim" {
 }
 
 resource "aws_api_gateway_integration" "options_guest_claim" {
-  rest_api_id = aws_api_gateway_rest_api.main.id
-  resource_id = aws_api_gateway_resource.guest_claim.id
-  http_method = aws_api_gateway_method.options_guest_claim.http_method
-  type        = "MOCK"
+  rest_api_id       = aws_api_gateway_rest_api.main.id
+  resource_id       = aws_api_gateway_resource.guest_claim.id
+  http_method       = aws_api_gateway_method.options_guest_claim.http_method
+  type              = "MOCK"
   request_templates = { "application/json" = "{\"statusCode\": 200}" }
 }
 
@@ -1806,6 +1806,12 @@ resource "aws_api_gateway_deployment" "main" {
       aws_api_gateway_resource.interview_session_id.id,
       aws_api_gateway_resource.interview_report.id,
       aws_api_gateway_resource.interview_sessions.id,
+      aws_api_gateway_resource.username.id,
+      aws_api_gateway_resource.username_check.id,
+      aws_api_gateway_resource.profile.id,
+      aws_api_gateway_method.get_username_check.id,
+      aws_api_gateway_method.get_profile.id,
+      aws_api_gateway_method.patch_profile.id,
       aws_api_gateway_method.post_presigned_url.id,
       aws_api_gateway_method.get_status.id,
       aws_api_gateway_method.list_portfolios.id,
@@ -1859,6 +1865,61 @@ resource "aws_api_gateway_deployment" "main" {
   lifecycle {
     create_before_destroy = true
   }
+  # Every integration must exist before the stage is deployed. Without this,
+  # a from-scratch build races: `triggers` only creates implicit dependencies
+  # on resources and methods, so CreateDeployment can fire while integrations
+  # are still being created and fails with "No integration defined for method".
+  depends_on = [
+    aws_api_gateway_integration.post_presigned_url,
+    aws_api_gateway_integration.get_status,
+    aws_api_gateway_integration.delete_status,
+    aws_api_gateway_integration.post_start_generation,
+    aws_api_gateway_integration.list_portfolios,
+    aws_api_gateway_integration.options_portfolio_id,
+    aws_api_gateway_integration.get_portfolio,
+    aws_api_gateway_integration.delete_portfolio,
+    aws_api_gateway_integration.options_portfolio_upload_id,
+    aws_api_gateway_integration.get_analytics,
+    aws_api_gateway_integration.patch_portfolio,
+    aws_api_gateway_integration.ai_enhance_portfolio,
+    aws_api_gateway_integration.get_portfolio_versions,
+    aws_api_gateway_integration.delete_portfolio_version,
+    aws_api_gateway_integration.post_activate_version,
+    aws_api_gateway_integration.options_presigned_url,
+    aws_api_gateway_integration.options_portfolio_analytics,
+    aws_api_gateway_integration.options_portfolio_content,
+    aws_api_gateway_integration.options_portfolio_ai_enhance,
+    aws_api_gateway_integration.add_custom_section,
+    aws_api_gateway_integration.options_portfolio_custom_section,
+    aws_api_gateway_integration.post_publish_portfolio,
+    aws_api_gateway_integration.options_publish_portfolio,
+    aws_api_gateway_integration.post_image_upload_url,
+    aws_api_gateway_integration.options_portfolio_image_upload_url,
+    aws_api_gateway_integration.post_project_image_generate,
+    aws_api_gateway_integration.options_portfolio_project_image_generate,
+    aws_api_gateway_integration.post_toggle_live,
+    aws_api_gateway_integration.options_portfolio_toggle_live,
+    aws_api_gateway_integration.get_portfolio_preview_url,
+    aws_api_gateway_integration.options_portfolio_preview,
+    aws_api_gateway_integration.post_interview_start,
+    aws_api_gateway_integration.options_interview_start,
+    aws_api_gateway_integration.post_interview_answer,
+    aws_api_gateway_integration.options_interview_answer,
+    aws_api_gateway_integration.post_interview_exit,
+    aws_api_gateway_integration.options_interview_exit,
+    aws_api_gateway_integration.get_interview_report,
+    aws_api_gateway_integration.options_interview_report,
+    aws_api_gateway_integration.get_interview_sessions,
+    aws_api_gateway_integration.options_interview_sessions,
+    aws_api_gateway_integration.post_guest_claim,
+    aws_api_gateway_integration.options_guest_claim,
+    aws_api_gateway_integration.get_username_check,
+    aws_api_gateway_integration.options_username_check,
+    aws_api_gateway_integration.get_profile,
+    aws_api_gateway_integration.patch_profile,
+    aws_api_gateway_integration.options_profile,
+  ]
+
 }
 
 resource "aws_api_gateway_stage" "main" {
@@ -1912,7 +1973,188 @@ resource "aws_api_gateway_method_settings" "all" {
     metrics_enabled        = true
     # ERROR logs auth failures and 5xx — INFO adds every request.
     # Use ERROR in prod to balance visibility vs. cost/noise.
-    logging_level       = var.environment == "prod" ? "ERROR" : "INFO"
-    data_trace_enabled  = var.environment != "prod"  # full req/resp in non-prod only
+    logging_level      = var.environment == "prod" ? "ERROR" : "INFO"
+    data_trace_enabled = var.environment != "prod" # full req/resp in non-prod only
+  }
+}
+
+# =============================================================================
+# /username/check — PUBLIC (no authorizer)
+# =============================================================================
+# The caller has no account yet, so this cannot be behind the Cognito
+# authorizer. It exposes only whether a public handle is taken — the same thing
+# a portfolio URL already reveals. Stage-level throttling caps scraping.
+# =============================================================================
+
+resource "aws_api_gateway_resource" "username" {
+  rest_api_id = aws_api_gateway_rest_api.main.id
+  parent_id   = aws_api_gateway_rest_api.main.root_resource_id
+  path_part   = "username"
+}
+
+resource "aws_api_gateway_resource" "username_check" {
+  rest_api_id = aws_api_gateway_rest_api.main.id
+  parent_id   = aws_api_gateway_resource.username.id
+  path_part   = "check"
+}
+
+resource "aws_api_gateway_method" "get_username_check" {
+  rest_api_id   = aws_api_gateway_rest_api.main.id
+  resource_id   = aws_api_gateway_resource.username_check.id
+  http_method   = "GET"
+  authorization = "NONE"
+
+  request_parameters = {
+    "method.request.querystring.username" = true
+  }
+}
+
+resource "aws_api_gateway_integration" "get_username_check" {
+  rest_api_id             = aws_api_gateway_rest_api.main.id
+  resource_id             = aws_api_gateway_resource.username_check.id
+  http_method             = aws_api_gateway_method.get_username_check.http_method
+  integration_http_method = "POST"
+  type                    = "AWS_PROXY"
+  uri                     = var.check_username_lambda_invoke_arn
+}
+
+resource "aws_lambda_permission" "api_check_username" {
+  statement_id  = "AllowAPIGatewayInvoke"
+  action        = "lambda:InvokeFunction"
+  function_name = var.check_username_lambda_arn
+  principal     = "apigateway.amazonaws.com"
+  source_arn    = "${aws_api_gateway_rest_api.main.execution_arn}/*/*"
+}
+
+resource "aws_api_gateway_method" "options_username_check" {
+  rest_api_id   = aws_api_gateway_rest_api.main.id
+  resource_id   = aws_api_gateway_resource.username_check.id
+  http_method   = "OPTIONS"
+  authorization = "NONE"
+}
+
+resource "aws_api_gateway_integration" "options_username_check" {
+  rest_api_id       = aws_api_gateway_rest_api.main.id
+  resource_id       = aws_api_gateway_resource.username_check.id
+  http_method       = aws_api_gateway_method.options_username_check.http_method
+  type              = "MOCK"
+  request_templates = { "application/json" = "{\"statusCode\": 200}" }
+}
+
+resource "aws_api_gateway_method_response" "options_username_check" {
+  rest_api_id = aws_api_gateway_rest_api.main.id
+  resource_id = aws_api_gateway_resource.username_check.id
+  http_method = aws_api_gateway_method.options_username_check.http_method
+  status_code = "200"
+  response_parameters = {
+    "method.response.header.Access-Control-Allow-Headers" = true
+    "method.response.header.Access-Control-Allow-Methods" = true
+    "method.response.header.Access-Control-Allow-Origin"  = true
+  }
+}
+
+resource "aws_api_gateway_integration_response" "options_username_check" {
+  rest_api_id = aws_api_gateway_rest_api.main.id
+  resource_id = aws_api_gateway_resource.username_check.id
+  http_method = aws_api_gateway_method.options_username_check.http_method
+  status_code = aws_api_gateway_method_response.options_username_check.status_code
+  response_parameters = {
+    "method.response.header.Access-Control-Allow-Headers" = "'Content-Type,Authorization'"
+    "method.response.header.Access-Control-Allow-Methods" = "'GET,OPTIONS'"
+    "method.response.header.Access-Control-Allow-Origin"  = "'*'"
+  }
+}
+
+# =============================================================================
+# /profile — GET and PATCH (Cognito authenticated)
+# =============================================================================
+# No userId in the path: the Lambda derives the caller from the token's sub
+# claim, so there is nothing to tamper with and no ownership check to get wrong.
+# =============================================================================
+
+resource "aws_api_gateway_resource" "profile" {
+  rest_api_id = aws_api_gateway_rest_api.main.id
+  parent_id   = aws_api_gateway_rest_api.main.root_resource_id
+  path_part   = "profile"
+}
+
+resource "aws_api_gateway_method" "get_profile" {
+  rest_api_id   = aws_api_gateway_rest_api.main.id
+  resource_id   = aws_api_gateway_resource.profile.id
+  http_method   = "GET"
+  authorization = "COGNITO_USER_POOLS"
+  authorizer_id = aws_api_gateway_authorizer.cognito.id
+}
+
+resource "aws_api_gateway_integration" "get_profile" {
+  rest_api_id             = aws_api_gateway_rest_api.main.id
+  resource_id             = aws_api_gateway_resource.profile.id
+  http_method             = aws_api_gateway_method.get_profile.http_method
+  integration_http_method = "POST"
+  type                    = "AWS_PROXY"
+  uri                     = var.profile_lambda_invoke_arn
+}
+
+resource "aws_api_gateway_method" "patch_profile" {
+  rest_api_id   = aws_api_gateway_rest_api.main.id
+  resource_id   = aws_api_gateway_resource.profile.id
+  http_method   = "PATCH"
+  authorization = "COGNITO_USER_POOLS"
+  authorizer_id = aws_api_gateway_authorizer.cognito.id
+}
+
+resource "aws_api_gateway_integration" "patch_profile" {
+  rest_api_id             = aws_api_gateway_rest_api.main.id
+  resource_id             = aws_api_gateway_resource.profile.id
+  http_method             = aws_api_gateway_method.patch_profile.http_method
+  integration_http_method = "POST"
+  type                    = "AWS_PROXY"
+  uri                     = var.profile_lambda_invoke_arn
+}
+
+resource "aws_lambda_permission" "api_profile" {
+  statement_id  = "AllowAPIGatewayInvoke"
+  action        = "lambda:InvokeFunction"
+  function_name = var.profile_lambda_arn
+  principal     = "apigateway.amazonaws.com"
+  source_arn    = "${aws_api_gateway_rest_api.main.execution_arn}/*/*"
+}
+
+resource "aws_api_gateway_method" "options_profile" {
+  rest_api_id   = aws_api_gateway_rest_api.main.id
+  resource_id   = aws_api_gateway_resource.profile.id
+  http_method   = "OPTIONS"
+  authorization = "NONE"
+}
+
+resource "aws_api_gateway_integration" "options_profile" {
+  rest_api_id       = aws_api_gateway_rest_api.main.id
+  resource_id       = aws_api_gateway_resource.profile.id
+  http_method       = aws_api_gateway_method.options_profile.http_method
+  type              = "MOCK"
+  request_templates = { "application/json" = "{\"statusCode\": 200}" }
+}
+
+resource "aws_api_gateway_method_response" "options_profile" {
+  rest_api_id = aws_api_gateway_rest_api.main.id
+  resource_id = aws_api_gateway_resource.profile.id
+  http_method = aws_api_gateway_method.options_profile.http_method
+  status_code = "200"
+  response_parameters = {
+    "method.response.header.Access-Control-Allow-Headers" = true
+    "method.response.header.Access-Control-Allow-Methods" = true
+    "method.response.header.Access-Control-Allow-Origin"  = true
+  }
+}
+
+resource "aws_api_gateway_integration_response" "options_profile" {
+  rest_api_id = aws_api_gateway_rest_api.main.id
+  resource_id = aws_api_gateway_resource.profile.id
+  http_method = aws_api_gateway_method.options_profile.http_method
+  status_code = aws_api_gateway_method_response.options_profile.status_code
+  response_parameters = {
+    "method.response.header.Access-Control-Allow-Headers" = "'Content-Type,Authorization'"
+    "method.response.header.Access-Control-Allow-Methods" = "'GET,PATCH,OPTIONS'"
+    "method.response.header.Access-Control-Allow-Origin"  = "'*'"
   }
 }

@@ -9,6 +9,8 @@ import decimal
 import boto3
 from boto3.dynamodb.conditions import Key
 
+import username_utils as uu
+
 dynamodb = boto3.resource('dynamodb')
 DYNAMODB_TABLE = os.environ.get('DYNAMODB_TABLE')
 
@@ -62,19 +64,24 @@ def lambda_handler(event, context):
 
         cloudfront_url = os.environ.get('CLOUDFRONT_URL', '').rstrip('/')
 
+        # Public URLs are addressed by username, not userId.
+        username = uu.get_profile(table, user_id).get('username')
+
         versions = []
         for item in response.get('Items', []):
             sk = item.get('SK', '')
             version_id = sk.replace(f'PORTFOLIO#{upload_id}#VERSION#', '')
             portfolio_path = item.get('portfolioPath', '')
+            public = uu.public_path(portfolio_path, username)
             portfolio_url = (
-                f'{cloudfront_url}/{portfolio_path}/index.html'
-                if cloudfront_url and portfolio_path else None
+                f'{cloudfront_url}/{public}/index.html'
+                if cloudfront_url and public else None
             )
             versions.append({
                 'versionId': version_id,
                 'version': item.get('version'),
                 'portfolioPath': portfolio_path,
+                'publicPath': public,
                 'portfolioUrl': portfolio_url,
                 'templateId': item.get('templateId'),
                 'createdAt': item.get('createdAt'),

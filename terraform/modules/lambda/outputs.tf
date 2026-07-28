@@ -330,3 +330,19 @@ output "claim_guest_arn" {
 output "claim_guest_invoke_arn" {
   value = aws_lambda_function.claim_guest.invoke_arn
 }
+
+# Username availability check (public)
+output "check_username_arn" {
+  value = aws_lambda_function.check_username.arn
+}
+output "check_username_invoke_arn" {
+  value = aws_lambda_function.check_username.invoke_arn
+}
+
+# User profile (GET / PATCH)
+output "profile_arn" {
+  value = aws_lambda_function.profile.arn
+}
+output "profile_invoke_arn" {
+  value = aws_lambda_function.profile.invoke_arn
+}

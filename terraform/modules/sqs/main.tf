@@ -13,7 +13,7 @@
 
 resource "aws_sqs_queue" "dlq" {
   name                      = "${var.name_prefix}-resume-processing-dlq"
-  message_retention_seconds = 1209600  # 14 days (max)
+  message_retention_seconds = 1209600 # 14 days (max)
 
   # Encryption at rest
   sqs_managed_sse_enabled = true
@@ -35,8 +35,8 @@ resource "aws_sqs_queue" "processing" {
   visibility_timeout_seconds = var.visibility_timeout
   message_retention_seconds  = var.message_retention_days * 86400
   delay_seconds              = 0
-  max_message_size           = 262144  # 256 KB
-  receive_wait_time_seconds  = 20      # Long polling
+  max_message_size           = 262144 # 256 KB
+  receive_wait_time_seconds  = 20     # Long polling
 
   # Encryption at rest
   sqs_managed_sse_enabled = true

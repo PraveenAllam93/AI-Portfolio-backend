@@ -43,3 +43,9 @@ variable "tags" {
   type        = map(string)
   default     = {}
 }
+
+variable "pre_signup_lambda_arn" {
+  description = "ARN of the PreSignUp trigger that claims the user's username. Empty disables the trigger."
+  type        = string
+  default     = ""
+}

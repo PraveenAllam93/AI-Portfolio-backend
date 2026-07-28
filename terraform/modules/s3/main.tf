@@ -26,9 +26,9 @@ resource "aws_s3_bucket" "quarantine" {
   bucket = "${var.name_prefix}-resume-quarantine-${var.random_suffix}"
 
   tags = merge(var.tags, {
-    Name        = "${var.name_prefix}-resume-quarantine"
-    TrustLevel  = "UNTRUSTED"
-    Purpose     = "Initial upload landing zone"
+    Name       = "${var.name_prefix}-resume-quarantine"
+    TrustLevel = "UNTRUSTED"
+    Purpose    = "Initial upload landing zone"
   })
 }
 
@@ -46,7 +46,7 @@ resource "aws_s3_bucket_lifecycle_configuration" "quarantine" {
     id     = "expire-unprocessed-uploads"
     status = "Enabled"
 
-    filter {}  # Apply to all objects in bucket
+    filter {} # Apply to all objects in bucket
 
     expiration {
       days = var.lifecycle_expiration_days
@@ -86,7 +86,7 @@ resource "aws_s3_bucket_cors_configuration" "quarantine" {
   cors_rule {
     allowed_headers = ["*"]
     allowed_methods = ["PUT", "POST"]
-    allowed_origins = ["*"]  # Restrict in production
+    allowed_origins = ["*"] # Restrict in production
     expose_headers  = ["ETag"]
     max_age_seconds = 3000
   }
@@ -102,9 +102,9 @@ resource "aws_s3_bucket" "validated" {
   bucket = "${var.name_prefix}-resume-validated-${var.random_suffix}"
 
   tags = merge(var.tags, {
-    Name        = "${var.name_prefix}-resume-validated"
-    TrustLevel  = "TRUSTED"
-    Purpose     = "Validated resumes ready for processing"
+    Name       = "${var.name_prefix}-resume-validated"
+    TrustLevel = "TRUSTED"
+    Purpose    = "Validated resumes ready for processing"
   })
 }
 
@@ -128,7 +128,7 @@ resource "aws_s3_bucket_lifecycle_configuration" "validated" {
     id     = "expire-processed-resumes"
     status = "Enabled"
 
-    filter {}  # Apply to all objects in bucket
+    filter {} # Apply to all objects in bucket
 
     expiration {
       days = var.lifecycle_expiration_days
@@ -169,9 +169,9 @@ resource "aws_s3_bucket" "rejected" {
   bucket = "${var.name_prefix}-resume-rejected-${var.random_suffix}"
 
   tags = merge(var.tags, {
-    Name        = "${var.name_prefix}-resume-rejected"
-    TrustLevel  = "REJECTED"
-    Purpose     = "Failed validation files"
+    Name       = "${var.name_prefix}-resume-rejected"
+    TrustLevel = "REJECTED"
+    Purpose    = "Failed validation files"
   })
 }
 
@@ -189,7 +189,7 @@ resource "aws_s3_bucket_lifecycle_configuration" "rejected" {
     id     = "expire-rejected-files"
     status = "Enabled"
 
-    filter {}  # Apply to all objects in bucket
+    filter {} # Apply to all objects in bucket
 
     expiration {
       days = var.lifecycle_expiration_days
@@ -265,7 +265,7 @@ resource "aws_s3_bucket_cors_configuration" "portfolio" {
   cors_rule {
     allowed_headers = ["*"]
     allowed_methods = ["PUT"]
-    allowed_origins = ["*"]  # Restrict to frontend domain in production
+    allowed_origins = ["*"] # Restrict to frontend domain in production
     expose_headers  = ["ETag"]
     max_age_seconds = 3000
   }
@@ -345,8 +345,8 @@ resource "aws_s3_bucket_public_access_block" "access_logs" {
   bucket     = aws_s3_bucket.access_logs.id
 
   # false: required for the canonical-user ACL grant to function
-  block_public_acls   = false
-  ignore_public_acls  = false
+  block_public_acls  = false
+  ignore_public_acls = false
   # true: no public bucket policy permitted — keeps HTTP access private
   block_public_policy     = true
   restrict_public_buckets = true

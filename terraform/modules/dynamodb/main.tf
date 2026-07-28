@@ -8,7 +8,7 @@
 
 resource "aws_dynamodb_table" "main" {
   name         = "${var.name_prefix}-main-table"
-  billing_mode = "PAY_PER_REQUEST"  # On-demand for unpredictable workloads
+  billing_mode = "PAY_PER_REQUEST" # On-demand for unpredictable workloads
   hash_key     = "PK"
   range_key    = "SK"
 

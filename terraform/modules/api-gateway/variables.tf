@@ -263,3 +263,25 @@ variable "claim_guest_lambda_invoke_arn" {
   description = "Invoke ARN of the claim guest portfolio Lambda"
   type        = string
 }
+
+# Username availability check (public endpoint)
+variable "check_username_lambda_arn" {
+  description = "ARN of the public username availability check Lambda"
+  type        = string
+}
+
+variable "check_username_lambda_invoke_arn" {
+  description = "Invoke ARN of the public username availability check Lambda"
+  type        = string
+}
+
+# User profile (GET / PATCH)
+variable "profile_lambda_arn" {
+  description = "ARN of the profile read/edit Lambda"
+  type        = string
+}
+
+variable "profile_lambda_invoke_arn" {
+  description = "Invoke ARN of the profile read/edit Lambda"
+  type        = string
+}

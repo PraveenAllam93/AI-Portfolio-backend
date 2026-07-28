@@ -89,9 +89,9 @@ resource "aws_iam_role_policy" "get_presigned_url_dynamodb" {
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [{
-      Sid      = "WriteUploadRecord"
-      Effect   = "Allow"
-      Action   = ["dynamodb:PutItem", "dynamodb:Query"]
+      Sid    = "WriteUploadRecord"
+      Effect = "Allow"
+      Action = ["dynamodb:PutItem", "dynamodb:Query"]
       Resource = [
         var.dynamodb_table_arn,
         "${var.dynamodb_table_arn}/index/*",
@@ -130,15 +130,15 @@ resource "aws_iam_role_policy" "quarantine_validator_s3" {
         Resource = "${var.quarantine_bucket_arn}/*"
       },
       {
-        Sid    = "PromoteToValidated"
-        Effect = "Allow"
-        Action = ["s3:PutObject"]
+        Sid      = "PromoteToValidated"
+        Effect   = "Allow"
+        Action   = ["s3:PutObject"]
         Resource = "${var.validated_bucket_arn}/*"
       },
       {
-        Sid    = "MoveToRejected"
-        Effect = "Allow"
-        Action = ["s3:PutObject"]
+        Sid      = "MoveToRejected"
+        Effect   = "Allow"
+        Action   = ["s3:PutObject"]
         Resource = "${var.rejected_bucket_arn}/*"
       },
     ]
@@ -214,9 +214,9 @@ resource "aws_iam_role_policy" "resume_ingestion_invoke_classify" {
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [{
-      Sid    = "InvokeClassifyProfession"
-      Effect = "Allow"
-      Action = ["lambda:InvokeFunction"]
+      Sid      = "InvokeClassifyProfession"
+      Effect   = "Allow"
+      Action   = ["lambda:InvokeFunction"]
       Resource = "arn:aws:lambda:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:function:${var.name_prefix}-classify-profession"
     }]
   })
@@ -385,8 +385,8 @@ resource "aws_iam_role_policy" "api_read_dynamodb" {
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [{
-      Sid      = "ReadOwnRecords"
-      Effect   = "Allow"
+      Sid    = "ReadOwnRecords"
+      Effect = "Allow"
       # GetItem only — no Scan, no Query, no Write
       Action   = ["dynamodb:GetItem"]
       Resource = var.dynamodb_table_arn
@@ -527,9 +527,9 @@ resource "aws_lambda_function" "resume_ingestion" {
   source_code_hash = data.archive_file.resume_ingestion.output_base64sha256
   runtime          = "python3.12"
   # 120s: extraction (incl. possible OCR) + synchronous profession classify.
-  timeout          = 120
-  memory_size      = 512
-  layers           = [aws_lambda_layer_version.pdf_processing.arn]
+  timeout     = 120
+  memory_size = 512
+  layers      = [aws_lambda_layer_version.pdf_processing.arn]
 
   reserved_concurrent_executions = var.reserved_concurrency
 
@@ -957,7 +957,7 @@ resource "aws_lambda_function" "process_access_logs" {
   handler          = "handler.lambda_handler"
   source_code_hash = data.archive_file.process_access_logs.output_base64sha256
   runtime          = "python3.12"
-  timeout          = 120  # Log files can contain many records
+  timeout          = 120 # Log files can contain many records
   memory_size      = 256
 
   reserved_concurrent_executions = var.reserved_concurrency
@@ -1075,9 +1075,9 @@ resource "aws_iam_role_policy" "portfolio_edit_dynamodb" {
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [{
-      Sid    = "UpdatePortfolioContent"
-      Effect = "Allow"
-      Action = ["dynamodb:UpdateItem"]
+      Sid      = "UpdatePortfolioContent"
+      Effect   = "Allow"
+      Action   = ["dynamodb:UpdateItem"]
       Resource = var.dynamodb_table_arn
       Condition = {
         "ForAllValues:StringLike" = {
@@ -1094,9 +1094,9 @@ resource "aws_iam_role_policy" "portfolio_edit_invoke" {
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [{
-      Sid    = "InvokePortfolioGenerator"
-      Effect = "Allow"
-      Action = ["lambda:InvokeFunction"]
+      Sid      = "InvokePortfolioGenerator"
+      Effect   = "Allow"
+      Action   = ["lambda:InvokeFunction"]
       Resource = "arn:aws:lambda:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:function:${var.name_prefix}-portfolio-generator"
     }]
   })
@@ -1186,9 +1186,9 @@ resource "aws_iam_role_policy" "ai_enhance_dynamodb" {
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [{
-      Sid    = "ReadPortfolioContent"
-      Effect = "Allow"
-      Action = ["dynamodb:GetItem"]
+      Sid      = "ReadPortfolioContent"
+      Effect   = "Allow"
+      Action   = ["dynamodb:GetItem"]
       Resource = var.dynamodb_table_arn
       Condition = {
         "ForAllValues:StringLike" = {
@@ -1205,9 +1205,9 @@ resource "aws_iam_role_policy" "ai_enhance_secrets" {
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [{
-      Sid    = "GetOpenAIKey"
-      Effect = "Allow"
-      Action = ["secretsmanager:GetSecretValue"]
+      Sid      = "GetOpenAIKey"
+      Effect   = "Allow"
+      Action   = ["secretsmanager:GetSecretValue"]
       Resource = "arn:aws:secretsmanager:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:secret:${var.openai_api_key_secret_name}*"
     }]
   })
@@ -1220,7 +1220,7 @@ resource "aws_lambda_function" "ai_enhance_portfolio" {
   handler          = "ai_enhance_portfolio.lambda_handler"
   source_code_hash = data.archive_file.get_portfolio.output_base64sha256
   runtime          = "python3.12"
-  timeout          = 29  # API Gateway max synchronous timeout
+  timeout          = 29 # API Gateway max synchronous timeout
   memory_size      = var.memory_size
 
   reserved_concurrent_executions = var.reserved_concurrency
@@ -1254,7 +1254,7 @@ resource "aws_lambda_function" "add_custom_section" {
   handler          = "add_custom_section.lambda_handler"
   source_code_hash = data.archive_file.get_portfolio.output_base64sha256
   runtime          = "python3.12"
-  timeout          = 29  # API Gateway max synchronous timeout
+  timeout          = 29 # API Gateway max synchronous timeout
   memory_size      = var.memory_size
 
   reserved_concurrent_executions = var.reserved_concurrency
@@ -1362,9 +1362,9 @@ resource "aws_iam_role_policy" "generate_project_image_dynamodb" {
     Version = "2012-10-17"
     Statement = [
       {
-        Sid    = "ReadPortfolio"
-        Effect = "Allow"
-        Action = ["dynamodb:GetItem"]
+        Sid      = "ReadPortfolio"
+        Effect   = "Allow"
+        Action   = ["dynamodb:GetItem"]
         Resource = var.dynamodb_table_arn
         Condition = {
           "ForAllValues:StringLike" = {
@@ -1373,9 +1373,9 @@ resource "aws_iam_role_policy" "generate_project_image_dynamodb" {
         }
       },
       {
-        Sid    = "RateLimitCounter"
-        Effect = "Allow"
-        Action = ["dynamodb:UpdateItem"]
+        Sid      = "RateLimitCounter"
+        Effect   = "Allow"
+        Action   = ["dynamodb:UpdateItem"]
         Resource = var.dynamodb_table_arn
         Condition = {
           "ForAllValues:StringLike" = {
@@ -1407,9 +1407,9 @@ resource "aws_iam_role_policy" "generate_project_image_secrets" {
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [{
-      Sid    = "GetOpenAIKey"
-      Effect = "Allow"
-      Action = ["secretsmanager:GetSecretValue"]
+      Sid      = "GetOpenAIKey"
+      Effect   = "Allow"
+      Action   = ["secretsmanager:GetSecretValue"]
       Resource = "arn:aws:secretsmanager:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:secret:${var.openai_api_key_secret_name}*"
     }]
   })
@@ -1422,20 +1422,20 @@ resource "aws_lambda_function" "generate_project_image" {
   handler          = "generate_project_image.lambda_handler"
   source_code_hash = data.archive_file.get_portfolio.output_base64sha256
   runtime          = "python3.12"
-  timeout          = 60  # DALL-E 3 can take 15-20s + download + S3 upload
+  timeout          = 60 # DALL-E 3 can take 15-20s + download + S3 upload
   memory_size      = 256
 
   reserved_concurrent_executions = var.reserved_concurrency
 
   environment {
     variables = {
-      DYNAMODB_TABLE          = var.dynamodb_table_name
-      PORTFOLIO_BUCKET        = var.portfolio_bucket_name
-      CLOUDFRONT_DOMAIN       = var.cloudfront_domain
-      OPENAI_SECRET_NAME      = var.openai_api_key_secret_name
-      DAILY_GENERATION_LIMIT  = "10"
-      ALLOWED_ORIGIN          = var.allowed_origin
-      ENVIRONMENT             = var.environment
+      DYNAMODB_TABLE         = var.dynamodb_table_name
+      PORTFOLIO_BUCKET       = var.portfolio_bucket_name
+      CLOUDFRONT_DOMAIN      = var.cloudfront_domain
+      OPENAI_SECRET_NAME     = var.openai_api_key_secret_name
+      DAILY_GENERATION_LIMIT = "10"
+      ALLOWED_ORIGIN         = var.allowed_origin
+      ENVIRONMENT            = var.environment
     }
   }
 
@@ -1500,9 +1500,9 @@ resource "aws_iam_role_policy" "interview_secrets" {
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [{
-      Sid    = "ReadOpenAISecret"
-      Effect = "Allow"
-      Action = ["secretsmanager:GetSecretValue"]
+      Sid      = "ReadOpenAISecret"
+      Effect   = "Allow"
+      Action   = ["secretsmanager:GetSecretValue"]
       Resource = "arn:aws:secretsmanager:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:secret:${var.openai_api_key_secret_name}*"
     }]
   })
@@ -1851,9 +1851,9 @@ resource "aws_iam_role_policy" "list_portfolios_dynamodb" {
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [{
-      Sid    = "ListPortfolios"
-      Effect = "Allow"
-      Action = ["dynamodb:Query", "dynamodb:GetItem"]
+      Sid      = "ListPortfolios"
+      Effect   = "Allow"
+      Action   = ["dynamodb:Query", "dynamodb:GetItem"]
       Resource = [var.dynamodb_table_arn]
       Condition = {
         "ForAllValues:StringLike" = {
@@ -1913,9 +1913,9 @@ resource "aws_iam_role_policy" "toggle_portfolio_live_dynamodb" {
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [{
-      Sid    = "ToggleLive"
-      Effect = "Allow"
-      Action = ["dynamodb:GetItem", "dynamodb:UpdateItem"]
+      Sid      = "ToggleLive"
+      Effect   = "Allow"
+      Action   = ["dynamodb:GetItem", "dynamodb:UpdateItem"]
       Resource = [var.dynamodb_table_arn]
       Condition = {
         "ForAllValues:StringLike" = {
@@ -1992,9 +1992,9 @@ resource "aws_iam_role_policy" "get_portfolio_preview_url_dynamodb" {
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [{
-      Sid    = "ReadVersionRecord"
-      Effect = "Allow"
-      Action = ["dynamodb:GetItem"]
+      Sid      = "ReadVersionRecord"
+      Effect   = "Allow"
+      Action   = ["dynamodb:GetItem"]
       Resource = var.dynamodb_table_arn
       Condition = {
         "ForAllValues:StringLike" = {
@@ -2033,11 +2033,11 @@ resource "aws_lambda_function" "get_portfolio_preview_url" {
 
   environment {
     variables = {
-      DYNAMODB_TABLE         = var.dynamodb_table_name
-      PORTFOLIO_BUCKET       = var.portfolio_bucket_name
+      DYNAMODB_TABLE          = var.dynamodb_table_name
+      PORTFOLIO_BUCKET        = var.portfolio_bucket_name
       PREVIEW_URL_TTL_SECONDS = "3600"
-      ALLOWED_ORIGIN         = var.allowed_origin
-      ENVIRONMENT            = var.environment
+      ALLOWED_ORIGIN          = var.allowed_origin
+      ENVIRONMENT             = var.environment
     }
   }
 
@@ -2069,9 +2069,9 @@ resource "aws_iam_role_policy" "delete_portfolio_dynamodb" {
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [{
-      Sid    = "DeletePortfolio"
-      Effect = "Allow"
-      Action = ["dynamodb:GetItem", "dynamodb:Query", "dynamodb:DeleteItem", "dynamodb:BatchWriteItem"]
+      Sid      = "DeletePortfolio"
+      Effect   = "Allow"
+      Action   = ["dynamodb:GetItem", "dynamodb:Query", "dynamodb:DeleteItem", "dynamodb:BatchWriteItem"]
       Resource = [var.dynamodb_table_arn]
       Condition = {
         "ForAllValues:StringLike" = {
@@ -2226,11 +2226,11 @@ resource "aws_iam_role_policy" "claim_guest_cognito" {
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [{
-      Sid = "InspectAndDeleteGuest"
+      Sid    = "InspectAndDeleteGuest"
       Effect = "Allow"
       # GetUser validates the guest's own access token (proof of session
       # possession) so the claim isn't authorized from an asserted sub.
-      Action = ["cognito-idp:AdminGetUser", "cognito-idp:AdminDeleteUser", "cognito-idp:GetUser"]
+      Action   = ["cognito-idp:AdminGetUser", "cognito-idp:AdminDeleteUser", "cognito-idp:GetUser"]
       Resource = var.user_pool_arn
     }]
   })
@@ -2243,7 +2243,7 @@ resource "aws_lambda_function" "claim_guest" {
   handler          = "claim_guest.lambda_handler"
   source_code_hash = data.archive_file.get_portfolio.output_base64sha256
   runtime          = "python3.12"
-  timeout          = 60  # DynamoDB re-key + S3 copy across multiple uploads
+  timeout          = 60 # DynamoDB re-key + S3 copy across multiple uploads
   memory_size      = 256
 
   reserved_concurrent_executions = var.reserved_concurrency
@@ -2357,7 +2357,7 @@ resource "aws_lambda_function" "guest_reaper" {
   handler          = "handler.lambda_handler"
   source_code_hash = data.archive_file.guest_reaper.output_base64sha256
   runtime          = "python3.12"
-  timeout          = 300  # may iterate many stale guests in one run
+  timeout          = 300 # may iterate many stale guests in one run
   memory_size      = 256
 
   reserved_concurrent_executions = var.reserved_concurrency
@@ -2401,4 +2401,166 @@ resource "aws_lambda_permission" "guest_reaper_events" {
   function_name = aws_lambda_function.guest_reaper.function_name
   principal     = "events.amazonaws.com"
   source_arn    = aws_cloudwatch_event_rule.guest_reaper.arn
+}
+
+# =============================================================================
+# USERNAME AVAILABILITY CHECK (PUBLIC API)
+# =============================================================================
+# GET /username/check?username=xyz — no authorizer, because the caller has no
+# account yet. Read-only and scoped to USERNAME#* keys, so the worst a scraper
+# can learn is which public handles are taken — which the portfolio URLs
+# already reveal.
+# =============================================================================
+
+resource "aws_iam_role" "check_username" {
+  name               = "${var.name_prefix}-check-username-role"
+  assume_role_policy = data.aws_iam_policy_document.lambda_assume_role.json
+  tags               = var.tags
+}
+
+resource "aws_iam_role_policy" "check_username_logs" {
+  name   = "cloudwatch-logs"
+  role   = aws_iam_role.check_username.id
+  policy = data.aws_iam_policy_document.cloudwatch_logs.json
+}
+
+resource "aws_iam_role_policy" "check_username_dynamodb" {
+  name = "dynamodb-username-read"
+  role = aws_iam_role.check_username.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Sid      = "ReadUsernameIndex"
+      Effect   = "Allow"
+      Action   = ["dynamodb:GetItem"]
+      Resource = [var.dynamodb_table_arn]
+      Condition = {
+        "ForAllValues:StringLike" = {
+          "dynamodb:LeadingKeys" = ["USERNAME#*"]
+        }
+      }
+    }]
+  })
+}
+
+resource "aws_lambda_function" "check_username" {
+  filename         = data.archive_file.get_portfolio.output_path
+  function_name    = "${var.name_prefix}-check-username"
+  role             = aws_iam_role.check_username.arn
+  handler          = "check_username.lambda_handler"
+  source_code_hash = data.archive_file.get_portfolio.output_base64sha256
+  runtime          = "python3.12"
+  timeout          = var.timeout
+  memory_size      = var.memory_size
+
+  reserved_concurrent_executions = var.reserved_concurrency
+
+  environment {
+    variables = {
+      DYNAMODB_TABLE = var.dynamodb_table_name
+      ALLOWED_ORIGIN = var.allowed_origin
+      ENVIRONMENT    = var.environment
+    }
+  }
+
+  tags = merge(var.tags, {
+    Name     = "${var.name_prefix}-check-username"
+    Function = "Public username availability check"
+  })
+}
+
+# =============================================================================
+# USER PROFILE (GET / PATCH)
+# =============================================================================
+# Reads and edits the caller's own profile. The rename is a TransactWriteItems
+# spanning USERNAME#{new}, USERNAME#{old} and USER#{sub}, so the policy has to
+# cover both key prefixes. Cognito write access is limited to
+# AdminUpdateUserAttributes, used only to mirror preferred_username.
+# =============================================================================
+
+resource "aws_iam_role" "profile" {
+  name               = "${var.name_prefix}-profile-role"
+  assume_role_policy = data.aws_iam_policy_document.lambda_assume_role.json
+  tags               = var.tags
+}
+
+resource "aws_iam_role_policy" "profile_logs" {
+  name   = "cloudwatch-logs"
+  role   = aws_iam_role.profile.id
+  policy = data.aws_iam_policy_document.cloudwatch_logs.json
+}
+
+resource "aws_iam_role_policy" "profile_dynamodb" {
+  name = "dynamodb-profile-rw"
+  role = aws_iam_role.profile.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Sid    = "ReadWriteOwnProfileAndUsername"
+      Effect = "Allow"
+      Action = [
+        "dynamodb:GetItem",
+        "dynamodb:PutItem",
+        "dynamodb:UpdateItem",
+        "dynamodb:DeleteItem",
+      ]
+      Resource = [var.dynamodb_table_arn]
+      Condition = {
+        "ForAllValues:StringLike" = {
+          "dynamodb:LeadingKeys" = ["USER#*", "USERNAME#*"]
+        }
+      }
+      }, {
+      # TransactWriteItems is not evaluated against LeadingKeys the same way as
+      # single-item writes, so it is granted separately on the same table.
+      Sid      = "RenameTransaction"
+      Effect   = "Allow"
+      Action   = ["dynamodb:TransactWriteItems"]
+      Resource = [var.dynamodb_table_arn]
+    }]
+  })
+}
+
+resource "aws_iam_role_policy" "profile_cognito" {
+  name = "cognito-mirror-username"
+  role = aws_iam_role.profile.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Sid      = "MirrorPreferredUsername"
+      Effect   = "Allow"
+      Action   = ["cognito-idp:AdminUpdateUserAttributes"]
+      Resource = [var.user_pool_arn]
+    }]
+  })
+}
+
+resource "aws_lambda_function" "profile" {
+  filename         = data.archive_file.get_portfolio.output_path
+  function_name    = "${var.name_prefix}-profile"
+  role             = aws_iam_role.profile.arn
+  handler          = "profile.lambda_handler"
+  source_code_hash = data.archive_file.get_portfolio.output_base64sha256
+  runtime          = "python3.12"
+  timeout          = var.timeout
+  memory_size      = var.memory_size
+
+  reserved_concurrent_executions = var.reserved_concurrency
+
+  environment {
+    variables = {
+      DYNAMODB_TABLE                = var.dynamodb_table_name
+      USER_POOL_ID                  = var.user_pool_id
+      ALLOWED_ORIGIN                = var.allowed_origin
+      USERNAME_CHANGE_COOLDOWN_DAYS = var.username_change_cooldown_days
+      ENVIRONMENT                   = var.environment
+    }
+  }
+
+  tags = merge(var.tags, {
+    Name     = "${var.name_prefix}-profile"
+    # AWS tag values allow only [letters numbers whitespace _ . : / = + - @].
+    # Apostrophes, parentheses and commas fail CreateFunction.
+    Function = "Read and edit the callers own profile - username and display name"
+  })
 }

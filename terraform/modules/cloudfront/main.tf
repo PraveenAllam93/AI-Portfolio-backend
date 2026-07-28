@@ -35,7 +35,7 @@ resource "aws_cloudfront_distribution" "portfolio" {
   is_ipv6_enabled     = true
   comment             = "${var.name_prefix} Portfolio CDN"
   default_root_object = "index.html"
-  price_class         = "PriceClass_200"  # Excludes South America and Australia
+  price_class         = "PriceClass_200" # Excludes South America and Australia
 
   # Standard access logging: CloudFront writes gzip log files to the dedicated
   # access-logs S3 bucket every ~5 minutes. The process_access_logs Lambda
@@ -68,8 +68,8 @@ resource "aws_cloudfront_distribution" "portfolio" {
 
     viewer_protocol_policy = "redirect-to-https"
     min_ttl                = 0
-    default_ttl            = 3600     # 1 hour
-    max_ttl                = 86400    # 24 hours
+    default_ttl            = 3600  # 1 hour
+    max_ttl                = 86400 # 24 hours
     compress               = true
 
     # Lambda@Edge access gate: fires only on cache misses.

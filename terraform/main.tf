@@ -77,12 +77,12 @@ data "aws_region" "current" {}
 module "s3" {
   source = "./modules/s3"
 
-  name_prefix                  = local.name_prefix
-  random_suffix                = random_id.suffix.hex
-  environment                  = var.environment
-  enable_versioning            = var.enable_s3_versioning
-  lifecycle_expiration_days    = var.s3_lifecycle_expiration_days
-  tags                         = local.common_tags
+  name_prefix               = local.name_prefix
+  random_suffix             = random_id.suffix.hex
+  environment               = var.environment
+  enable_versioning         = var.enable_s3_versioning
+  lifecycle_expiration_days = var.s3_lifecycle_expiration_days
+  tags                      = local.common_tags
 }
 
 # -----------------------------------------------------------------------------
@@ -104,12 +104,12 @@ module "dynamodb" {
 module "sqs" {
   source = "./modules/sqs"
 
-  name_prefix             = local.name_prefix
-  environment             = var.environment
-  visibility_timeout      = var.sqs_visibility_timeout
-  message_retention_days  = var.sqs_message_retention_days
-  dlq_max_receive_count   = var.dlq_max_receive_count
-  tags                    = local.common_tags
+  name_prefix            = local.name_prefix
+  environment            = var.environment
+  visibility_timeout     = var.sqs_visibility_timeout
+  message_retention_days = var.sqs_message_retention_days
+  dlq_max_receive_count  = var.dlq_max_receive_count
+  tags                   = local.common_tags
 }
 
 # -----------------------------------------------------------------------------
@@ -126,7 +126,11 @@ module "cognito" {
   password_require_lowercase = var.cognito_password_require_lowercase
   password_require_numbers   = var.cognito_password_require_numbers
   password_require_symbols   = var.cognito_password_require_symbols
-  tags                       = local.common_tags
+
+  # Claims the chosen username atomically with account creation.
+  pre_signup_lambda_arn = aws_lambda_function.pre_signup.arn
+
+  tags = local.common_tags
 }
 
 # -----------------------------------------------------------------------------
@@ -136,37 +140,37 @@ module "cognito" {
 module "lambda" {
   source = "./modules/lambda"
 
-  name_prefix             = local.name_prefix
-  environment             = var.environment
-  memory_size             = var.lambda_memory_size
-  timeout                 = var.lambda_timeout
-  reserved_concurrency    = var.lambda_reserved_concurrency
+  name_prefix          = local.name_prefix
+  environment          = var.environment
+  memory_size          = var.lambda_memory_size
+  timeout              = var.lambda_timeout
+  reserved_concurrency = var.lambda_reserved_concurrency
 
   # Bucket ARNs
-  quarantine_bucket_arn   = module.s3.quarantine_bucket_arn
-  quarantine_bucket_name  = module.s3.quarantine_bucket_name
-  validated_bucket_arn    = module.s3.validated_bucket_arn
-  validated_bucket_name   = module.s3.validated_bucket_name
-  rejected_bucket_arn     = module.s3.rejected_bucket_arn
-  rejected_bucket_name    = module.s3.rejected_bucket_name
-  portfolio_bucket_arn    = module.s3.portfolio_bucket_arn
-  portfolio_bucket_name   = module.s3.portfolio_bucket_name
+  quarantine_bucket_arn  = module.s3.quarantine_bucket_arn
+  quarantine_bucket_name = module.s3.quarantine_bucket_name
+  validated_bucket_arn   = module.s3.validated_bucket_arn
+  validated_bucket_name  = module.s3.validated_bucket_name
+  rejected_bucket_arn    = module.s3.rejected_bucket_arn
+  rejected_bucket_name   = module.s3.rejected_bucket_name
+  portfolio_bucket_arn   = module.s3.portfolio_bucket_arn
+  portfolio_bucket_name  = module.s3.portfolio_bucket_name
 
   # Access logs bucket (CloudFront view tracking)
   access_logs_bucket_arn  = module.s3.access_logs_bucket_arn
   access_logs_bucket_name = module.s3.access_logs_bucket_name
 
   # DynamoDB
-  dynamodb_table_arn      = module.dynamodb.table_arn
-  dynamodb_table_name     = module.dynamodb.table_name
+  dynamodb_table_arn  = module.dynamodb.table_arn
+  dynamodb_table_name = module.dynamodb.table_name
 
   # SQS
-  processing_queue_arn    = module.sqs.processing_queue_arn
-  processing_queue_url    = module.sqs.processing_queue_url
+  processing_queue_arn = module.sqs.processing_queue_arn
+  processing_queue_url = module.sqs.processing_queue_url
 
   # Cognito
-  user_pool_arn           = module.cognito.user_pool_arn
-  user_pool_id            = module.cognito.user_pool_id
+  user_pool_arn = module.cognito.user_pool_arn
+  user_pool_id  = module.cognito.user_pool_id
 
   # Upload config
   max_upload_size_mb           = var.max_upload_size_mb
@@ -180,10 +184,15 @@ module "lambda" {
   # CORS: lock to your frontend domain in prod (e.g. https://app.example.com)
   allowed_origin = var.allowed_origin
 
+  # Guest accounts + username rename policy — kept in one place so the
+  # PreSignUp trigger (defined at root) and the profile Lambda agree.
+  guest_email_domain            = var.guest_email_domain
+  username_change_cooldown_days = var.username_change_cooldown_days
+
   # CloudFront: portfolio generator invalidates cache after each regeneration
   cloudfront_distribution_id  = module.cloudfront.distribution_id
   cloudfront_distribution_arn = module.cloudfront.distribution_arn
-  cloudfront_domain            = module.cloudfront.domain_name
+  cloudfront_domain           = module.cloudfront.domain_name
 
   tags = local.common_tags
 }
@@ -195,35 +204,35 @@ module "lambda" {
 module "api_gateway" {
   source = "./modules/api-gateway"
 
-  name_prefix   = local.name_prefix
-  environment   = var.environment
-  rate_limit    = var.api_rate_limit
-  burst_limit   = var.api_burst_limit
+  name_prefix = local.name_prefix
+  environment = var.environment
+  rate_limit  = var.api_rate_limit
+  burst_limit = var.api_burst_limit
 
   # Cognito
   user_pool_arn = module.cognito.user_pool_arn
 
   # Lambda integrations — existing
-  get_presigned_url_lambda_arn         = module.lambda.get_presigned_url_arn
-  get_presigned_url_lambda_invoke_arn  = module.lambda.get_presigned_url_invoke_arn
-  get_portfolio_lambda_arn             = module.lambda.get_portfolio_arn
-  get_portfolio_lambda_invoke_arn      = module.lambda.get_portfolio_invoke_arn
-  get_status_lambda_arn                = module.lambda.get_status_arn
-  get_status_lambda_invoke_arn         = module.lambda.get_status_invoke_arn
-  start_generation_lambda_arn          = module.lambda.start_generation_arn
-  start_generation_lambda_invoke_arn   = module.lambda.start_generation_invoke_arn
+  get_presigned_url_lambda_arn        = module.lambda.get_presigned_url_arn
+  get_presigned_url_lambda_invoke_arn = module.lambda.get_presigned_url_invoke_arn
+  get_portfolio_lambda_arn            = module.lambda.get_portfolio_arn
+  get_portfolio_lambda_invoke_arn     = module.lambda.get_portfolio_invoke_arn
+  get_status_lambda_arn               = module.lambda.get_status_arn
+  get_status_lambda_invoke_arn        = module.lambda.get_status_invoke_arn
+  start_generation_lambda_arn         = module.lambda.start_generation_arn
+  start_generation_lambda_invoke_arn  = module.lambda.start_generation_invoke_arn
 
   # Lambda integrations — new endpoints
-  get_analytics_lambda_arn                   = module.lambda.get_analytics_arn
-  get_analytics_lambda_invoke_arn            = module.lambda.get_analytics_invoke_arn
-  patch_portfolio_lambda_arn                 = module.lambda.patch_portfolio_arn
-  patch_portfolio_lambda_invoke_arn          = module.lambda.patch_portfolio_invoke_arn
-  ai_enhance_portfolio_lambda_arn            = module.lambda.ai_enhance_portfolio_arn
-  ai_enhance_portfolio_lambda_invoke_arn     = module.lambda.ai_enhance_portfolio_invoke_arn
-  add_custom_section_lambda_arn              = module.lambda.add_custom_section_arn
-  add_custom_section_lambda_invoke_arn       = module.lambda.add_custom_section_invoke_arn
-  publish_portfolio_lambda_arn               = module.lambda.publish_portfolio_arn
-  publish_portfolio_lambda_invoke_arn        = module.lambda.publish_portfolio_invoke_arn
+  get_analytics_lambda_arn               = module.lambda.get_analytics_arn
+  get_analytics_lambda_invoke_arn        = module.lambda.get_analytics_invoke_arn
+  patch_portfolio_lambda_arn             = module.lambda.patch_portfolio_arn
+  patch_portfolio_lambda_invoke_arn      = module.lambda.patch_portfolio_invoke_arn
+  ai_enhance_portfolio_lambda_arn        = module.lambda.ai_enhance_portfolio_arn
+  ai_enhance_portfolio_lambda_invoke_arn = module.lambda.ai_enhance_portfolio_invoke_arn
+  add_custom_section_lambda_arn          = module.lambda.add_custom_section_arn
+  add_custom_section_lambda_invoke_arn   = module.lambda.add_custom_section_invoke_arn
+  publish_portfolio_lambda_arn           = module.lambda.publish_portfolio_arn
+  publish_portfolio_lambda_invoke_arn    = module.lambda.publish_portfolio_invoke_arn
 
   get_image_upload_url_lambda_arn        = module.lambda.get_image_upload_url_arn
   get_image_upload_url_lambda_invoke_arn = module.lambda.get_image_upload_url_invoke_arn
@@ -231,12 +240,12 @@ module "api_gateway" {
   generate_project_image_lambda_arn        = module.lambda.generate_project_image_arn
   generate_project_image_lambda_invoke_arn = module.lambda.generate_project_image_invoke_arn
 
-  interview_start_lambda_arn         = module.lambda.interview_start_arn
-  interview_start_lambda_invoke_arn  = module.lambda.interview_start_invoke_arn
-  interview_answer_lambda_arn        = module.lambda.interview_answer_arn
-  interview_answer_lambda_invoke_arn = module.lambda.interview_answer_invoke_arn
-  interview_exit_lambda_arn          = module.lambda.interview_exit_arn
-  interview_exit_lambda_invoke_arn   = module.lambda.interview_exit_invoke_arn
+  interview_start_lambda_arn           = module.lambda.interview_start_arn
+  interview_start_lambda_invoke_arn    = module.lambda.interview_start_invoke_arn
+  interview_answer_lambda_arn          = module.lambda.interview_answer_arn
+  interview_answer_lambda_invoke_arn   = module.lambda.interview_answer_invoke_arn
+  interview_exit_lambda_arn            = module.lambda.interview_exit_arn
+  interview_exit_lambda_invoke_arn     = module.lambda.interview_exit_invoke_arn
   interview_report_lambda_arn          = module.lambda.interview_report_arn
   interview_report_lambda_invoke_arn   = module.lambda.interview_report_invoke_arn
   interview_sessions_lambda_arn        = module.lambda.interview_sessions_arn
@@ -264,6 +273,12 @@ module "api_gateway" {
 
   claim_guest_lambda_arn        = module.lambda.claim_guest_arn
   claim_guest_lambda_invoke_arn = module.lambda.claim_guest_invoke_arn
+
+  # Username + profile
+  check_username_lambda_arn        = module.lambda.check_username_arn
+  check_username_lambda_invoke_arn = module.lambda.check_username_invoke_arn
+  profile_lambda_arn               = module.lambda.profile_arn
+  profile_lambda_invoke_arn        = module.lambda.profile_invoke_arn
 
   tags = local.common_tags
 }
@@ -361,11 +376,11 @@ module "cloudfront" {
     aws.us_east_1 = aws.us_east_1
   }
 
-  name_prefix               = local.name_prefix
-  environment               = var.environment
-  portfolio_bucket_arn      = module.s3.portfolio_bucket_arn
-  portfolio_bucket_id       = module.s3.portfolio_bucket_id
-  portfolio_bucket_domain   = module.s3.portfolio_bucket_domain
+  name_prefix             = local.name_prefix
+  environment             = var.environment
+  portfolio_bucket_arn    = module.s3.portfolio_bucket_arn
+  portfolio_bucket_id     = module.s3.portfolio_bucket_id
+  portfolio_bucket_domain = module.s3.portfolio_bucket_domain
   # Access logs bucket — CloudFront writes compressed logs here every ~5 min.
   # Must use bucket_domain_name (not regional) per CloudFront logging requirement.
   access_logs_bucket_domain        = module.s3.access_logs_bucket_domain
@@ -414,4 +429,102 @@ resource "aws_s3_bucket_notification" "access_logs_notification" {
   }
 
   depends_on = [module.lambda]
+}
+
+# -----------------------------------------------------------------------------
+# PRE-SIGNUP TRIGGER — claims the user's chosen username
+# -----------------------------------------------------------------------------
+# Defined here rather than inside modules/lambda to avoid a module cycle:
+# module.lambda already consumes module.cognito's user pool ARN/ID, so the
+# Cognito module cannot in turn depend on module.lambda for this trigger's ARN.
+# Same precedent as portfolio_access_gate above.
+#
+# The trigger runs before Cognito creates the account. It claims the handle
+# with a conditional DynamoDB put and raises if that fails, which aborts the
+# sign-up — making "account exists" and "username claimed" atomic.
+
+data "archive_file" "pre_signup" {
+  type        = "zip"
+  source_dir  = "${path.root}/../src/lambdas/auth"
+  output_path = "${path.root}/../dist/lambdas/pre_signup.zip"
+}
+
+resource "aws_iam_role" "pre_signup" {
+  name = "${local.name_prefix}-pre-signup-role"
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect    = "Allow"
+      Action    = "sts:AssumeRole"
+      Principal = { Service = "lambda.amazonaws.com" }
+    }]
+  })
+  tags = local.common_tags
+}
+
+resource "aws_iam_role_policy" "pre_signup_logs" {
+  name = "cloudwatch-logs"
+  role = aws_iam_role.pre_signup.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect   = "Allow"
+      Action   = ["logs:CreateLogGroup", "logs:CreateLogStream", "logs:PutLogEvents"]
+      Resource = "arn:aws:logs:*:*:*"
+    }]
+  })
+}
+
+resource "aws_iam_role_policy" "pre_signup_dynamodb" {
+  name = "dynamodb-claim-username"
+  role = aws_iam_role.pre_signup.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Sid    = "ClaimUsername"
+      Effect = "Allow"
+      # PutItem writes the USERNAME# claim; UpdateItem writes the USER# reverse
+      # record; DeleteItem is the rollback path for a failed sign-up.
+      Action   = ["dynamodb:PutItem", "dynamodb:UpdateItem", "dynamodb:DeleteItem"]
+      Resource = [module.dynamodb.table_arn]
+      Condition = {
+        "ForAllValues:StringLike" = {
+          "dynamodb:LeadingKeys" = ["USER#*", "USERNAME#*"]
+        }
+      }
+    }]
+  })
+}
+
+resource "aws_lambda_function" "pre_signup" {
+  filename         = data.archive_file.pre_signup.output_path
+  function_name    = "${local.name_prefix}-pre-signup"
+  role             = aws_iam_role.pre_signup.arn
+  handler          = "pre_signup.lambda_handler"
+  source_code_hash = data.archive_file.pre_signup.output_base64sha256
+  runtime          = "python3.12"
+  timeout          = 10
+  memory_size      = 256
+
+  environment {
+    variables = {
+      DYNAMODB_TABLE     = module.dynamodb.table_name
+      GUEST_EMAIL_DOMAIN = var.guest_email_domain
+      ENVIRONMENT        = var.environment
+    }
+  }
+
+  tags = merge(local.common_tags, {
+    # Plain ASCII only: AWS tag values reject dashes outside [_.:/=+-@], so an
+    # em-dash here fails CreateFunction with a ValidationException.
+    Function = "Cognito PreSignUp - claim username atomically with account creation"
+  })
+}
+
+resource "aws_lambda_permission" "cognito_pre_signup" {
+  statement_id  = "AllowCognitoInvoke"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.pre_signup.function_name
+  principal     = "cognito-idp.amazonaws.com"
+  source_arn    = module.cognito.user_pool_arn
 }

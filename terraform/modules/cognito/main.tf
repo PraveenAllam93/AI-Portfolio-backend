@@ -66,6 +66,38 @@ resource "aws_cognito_user_pool" "main" {
     }
   }
 
+  # The public handle. Stored on the STANDARD preferred_username attribute
+  # rather than a custom one for two reasons:
+  #   1. standard attributes are searchable through ListUsers, which is how the
+  #      web app resolves a username to an account at login time (custom
+  #      attributes cannot be filtered on)
+  #   2. it lands on the ID token automatically, so building a portfolio URL
+  #      needs no extra lookup
+  # Uniqueness is NOT enforced by Cognito here — the pre_sign_up trigger claims
+  # the handle with a conditional DynamoDB write, which is the authority.
+  schema {
+    name                     = "preferred_username"
+    attribute_data_type      = "String"
+    required                 = false
+    mutable                  = true
+    developer_only_attribute = false
+
+    string_attribute_constraints {
+      min_length = 3
+      max_length = 30
+    }
+  }
+
+  # Claims the chosen username atomically with account creation. Raising in
+  # this trigger aborts the sign-up, so an account can never exist without a
+  # username and two accounts can never share one.
+  dynamic "lambda_config" {
+    for_each = var.pre_signup_lambda_arn == "" ? [] : [1]
+    content {
+      pre_sign_up = var.pre_signup_lambda_arn
+    }
+  }
+
   # User pool add-ons
   user_pool_add_ons {
     advanced_security_mode = var.environment == "prod" ? "ENFORCED" : "OFF"
@@ -106,9 +138,9 @@ resource "aws_cognito_user_pool_client" "main" {
   user_pool_id = aws_cognito_user_pool.main.id
 
   # Token validity
-  access_token_validity  = 1   # 1 hour
-  id_token_validity      = 1   # 1 hour
-  refresh_token_validity = 30  # 30 days
+  access_token_validity  = 1  # 1 hour
+  id_token_validity      = 1  # 1 hour
+  refresh_token_validity = 30 # 30 days
 
   token_validity_units {
     access_token  = "hours"
@@ -137,8 +169,10 @@ resource "aws_cognito_user_pool_client" "main" {
   prevent_user_existence_errors = "ENABLED"
 
   # Read/write attributes
-  read_attributes  = ["email", "name", "email_verified"]
-  write_attributes = ["email", "name"]
+  # preferred_username must be writable for SignUp to carry the chosen handle,
+  # and readable so it appears as a claim on the ID token.
+  read_attributes  = ["email", "name", "email_verified", "preferred_username"]
+  write_attributes = ["email", "name", "preferred_username"]
 }
 
 # -----------------------------------------------------------------------------
