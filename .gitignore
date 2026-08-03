@@ -140,8 +140,13 @@ celerybeat.pid
 *.sage.py
 
 # Environments
-.env
-.env.*
+# `.env*` is deliberately broad. The previous `.env` + `.env.*` pair matched
+# only dot-separated variants, so hand-named copies such as `.env_from-praveen`
+# or `.env_stale-jul27` stayed UNIGNORED — and those hold live
+# AWS_SECRET_ACCESS_KEY / OPENAI_API_KEY values. A single `git add -A` would
+# have pushed them. Do not narrow this pattern.
+.env*
+!.env.example
 .envrc
 .venv
 env/
