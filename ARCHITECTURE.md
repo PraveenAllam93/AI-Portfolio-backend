@@ -51,7 +51,7 @@ Ingestion Lambda → DynamoDB: EXTRACTING_TEXT → SQS
   │
   ▼
 AI Processing Lambda (SQS trigger)
-  │  OpenAI gpt-4o-mini
+  │  OpenAI gpt-5.6-luna
   ▼
 DynamoDB: AI_COMPLETE (parsedData + portfolioContent saved)
   │  async Lambda invoke
@@ -82,7 +82,7 @@ CloudFront CDN → Public URL
 | Queue | Amazon SQS + DLQ |
 | Storage | Amazon S3 (quarantine, validated, rejected, portfolio buckets) |
 | CDN | AWS CloudFront |
-| AI | OpenAI gpt-4o-mini |
+| AI | OpenAI gpt-5.6-luna (text), gpt-image-1 (project images) |
 | Secrets | AWS Secrets Manager |
 | Observability | CloudWatch Logs (structured JSON, correlation IDs) |
 | IaC | Terraform |
@@ -280,7 +280,7 @@ Triggered by `S3:ObjectCreated` on validated bucket.
 Triggered by SQS.
 
 - Fetches OpenAI API key from Secrets Manager
-- Calls OpenAI `gpt-4o-mini` with:
+- Calls OpenAI `gpt-5.6-luna` with:
   - Category-specific Pydantic JSON schema
   - Portfolio generation prompt
 - Response shape:

@@ -145,9 +145,15 @@ def _get_openai_key():
     return _openai_api_key
 
 
+# NOTE for any future model swap: this generation of the API rejects
+# 'max_tokens' (use 'max_completion_tokens') and rejects any explicit
+# 'temperature' other than the default 1 — both return HTTP 400.
+_OPENAI_MODEL = 'gpt-5.6-luna'
+
+
 def _call_openai(prompt, api_key, max_tokens=400):
     request_body = json.dumps({
-        "model": "gpt-4o-mini",
+        "model": _OPENAI_MODEL,
         "messages": [
             {
                 "role": "system",
@@ -159,8 +165,9 @@ def _call_openai(prompt, api_key, max_tokens=400):
             },
             {"role": "user", "content": prompt},
         ],
-        "temperature": 0.6,
-        "max_tokens": max_tokens,
+        # No 'temperature': this model accepts only the default (1). The
+        # previous 0.6 is not expressible; callers keep their own token budgets.
+        "max_completion_tokens": max_tokens,
     }).encode('utf-8')
 
     req = urllib.request.Request(

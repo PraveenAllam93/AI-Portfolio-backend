@@ -46,7 +46,10 @@ def _flatten_skills(skills_raw) -> list[str]:
 
 MAX_ROLE_INFO_LENGTH = 500
 MAX_FOLLOW_UPS_PER_TOPIC = 2  # base + 2 follow-ups = 3 questions max per topic
-OPENAI_MODEL = 'gpt-4o-mini'
+# NOTE for any future model swap: this generation of the API rejects
+# 'max_tokens' (use 'max_completion_tokens') and rejects any explicit
+# 'temperature' other than the default 1 — both return HTTP 400.
+OPENAI_MODEL = 'gpt-5.6-luna'
 OPENAI_TIMEOUT = 45
 
 # Cached across warm invocations
@@ -111,8 +114,9 @@ def _call_openai(system_prompt: str, user_message: str, correlation_id: str) -> 
             {'role': 'system', 'content': system_prompt},
             {'role': 'user', 'content': user_message},
         ],
-        'temperature': 0.7,
-        'max_tokens': 1500,
+        # No 'temperature': this model accepts only the default (1). That is
+        # close to the 0.7 used previously, so question variety is preserved.
+        'max_completion_tokens': 1500,
         'response_format': {'type': 'json_object'},
     }).encode('utf-8')
 
