@@ -201,12 +201,13 @@ def lambda_handler(event, context):
             return ent.template_limit_response(plan, template_id)
 
         # --- Validation 7: per-plan total portfolio limit ---
-        in_flight_ids = ent.active_upload_ids(user_id)
+        # Counts finished portfolios plus uploads already committed to
+        # generation. Deliberately NOT every in-flight upload: one still sitting
+        # on the profession/template screen has no dashboard entry, so counting
+        # it told the user to "delete a portfolio" that they could not see.
         max_portfolios = ent.limits_for(plan).get('portfolios')
         if max_portfolios is not None:
-            # Union, not sum: mid-pipeline an upload owns both an UPLOAD# and a
-            # PORTFOLIO# record and must not be counted twice.
-            used = len(ent.portfolio_upload_ids(user_id) | in_flight_ids)
+            used = ent.used_portfolio_slots(user_id)
             if used >= max_portfolios:
                 _log_warning(
                     "Portfolio limit reached",
@@ -221,7 +222,9 @@ def lambda_handler(event, context):
         # --- Validation 8: concurrent-upload quota (abuse protection) ---
         # Independent of the plan limit above: this one caps how many uploads
         # may be in the pipeline AT ONCE, and exists to stop pipeline flooding.
-        if len(in_flight_ids) >= MAX_ACTIVE_UPLOADS:
+        # It DOES count uploads awaiting selection — that is what keeps a user
+        # from opening unlimited half-finished uploads.
+        if len(ent.active_upload_ids(user_id)) >= MAX_ACTIVE_UPLOADS:
             _log_warning(
                 "Upload quota exceeded",
                 correlationId=correlation_id,

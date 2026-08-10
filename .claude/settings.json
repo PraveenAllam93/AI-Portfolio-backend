@@ -257,7 +257,13 @@
       "PowerShell(wsl.exe -d Ubuntu -u prudvi -- bash \"/mnt/c/Users/borra/AppData/Local/Temp/claude/--wsl-localhost-Ubuntu-home-prudvi-projects-AI-Portfolio-backend/e9f64167-e3ad-4aba-99ec-959cdc28cbd6/scratchpad/check_eol.sh\")",
       "PowerShell(wsl.exe -d Ubuntu -u prudvi -- bash \"/mnt/c/Users/borra/AppData/Local/Temp/claude/--wsl-localhost-Ubuntu-home-prudvi-projects-AI-Portfolio-backend/e9f64167-e3ad-4aba-99ec-959cdc28cbd6/scratchpad/eol_report.sh\")",
       "PowerShell(wsl.exe -d Ubuntu -u prudvi -- bash \"/mnt/c/Users/borra/AppData/Local/Temp/claude/--wsl-localhost-Ubuntu-home-prudvi-projects-AI-Portfolio-backend/e9f64167-e3ad-4aba-99ec-959cdc28cbd6/scratchpad/restore_crlf.sh\")",
-      "PowerShell(wsl.exe -d Ubuntu -u prudvi -- bash \"/mnt/c/Users/borra/AppData/Local/Temp/claude/--wsl-localhost-Ubuntu-home-prudvi-projects-AI-Portfolio-backend/e9f64167-e3ad-4aba-99ec-959cdc28cbd6/scratchpad/commit_push.sh\")"
+      "PowerShell(wsl.exe -d Ubuntu -u prudvi -- bash \"/mnt/c/Users/borra/AppData/Local/Temp/claude/--wsl-localhost-Ubuntu-home-prudvi-projects-AI-Portfolio-backend/e9f64167-e3ad-4aba-99ec-959cdc28cbd6/scratchpad/commit_push.sh\")",
+      "PowerShell(wsl.exe -d Ubuntu -u prudvi -- bash \"/mnt/c/Users/borra/AppData/Local/Temp/claude/--wsl-localhost-Ubuntu-home-prudvi-projects-AI-Portfolio-backend/e9f64167-e3ad-4aba-99ec-959cdc28cbd6/scratchpad/diagnose_user.sh\")",
+      "PowerShell(wsl.exe -d Ubuntu -u prudvi -- bash \"/mnt/c/Users/borra/AppData/Local/Temp/claude/--wsl-localhost-Ubuntu-home-prudvi-projects-AI-Portfolio-backend/e9f64167-e3ad-4aba-99ec-959cdc28cbd6/scratchpad/list_users.sh\")",
+      "PowerShell(wsl.exe -d Ubuntu -u prudvi -- bash \"/mnt/c/Users/borra/AppData/Local/Temp/claude/--wsl-localhost-Ubuntu-home-prudvi-projects-AI-Portfolio-backend/e9f64167-e3ad-4aba-99ec-959cdc28cbd6/scratchpad/find_stuck.sh\")",
+      "PowerShell(wsl.exe -d Ubuntu -u prudvi -- bash \"/mnt/c/Users/borra/AppData/Local/Temp/claude/--wsl-localhost-Ubuntu-home-prudvi-projects-AI-Portfolio-backend/e9f64167-e3ad-4aba-99ec-959cdc28cbd6/scratchpad/verify_fix_real_user.sh\")",
+      "PowerShell(wsl.exe -d Ubuntu -u prudvi -- bash \"/mnt/c/Users/borra/AppData/Local/Temp/claude/--wsl-localhost-Ubuntu-home-prudvi-projects-AI-Portfolio-backend/e9f64167-e3ad-4aba-99ec-959cdc28cbd6/scratchpad/regression_cap.sh\")",
+      "PowerShell(wsl.exe -d Ubuntu -u prudvi -- bash \"/mnt/c/Users/borra/AppData/Local/Temp/claude/--wsl-localhost-Ubuntu-home-prudvi-projects-AI-Portfolio-backend/e9f64167-e3ad-4aba-99ec-959cdc28cbd6/scratchpad/push_fix.sh\")"
     ],
     "additionalDirectories": [
       "\\\\wsl.localhost\\Ubuntu\\home\\prudvi\\projects\\AI-Portfolio-frontend\\src\\routes\\api\\portfolio\\[userId]",

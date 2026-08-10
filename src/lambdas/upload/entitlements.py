@@ -275,20 +275,41 @@ def count_portfolios(user_id: str) -> int:
     return len(portfolio_upload_ids(user_id))
 
 
-# Upload states that are still moving through the pipeline. An upload in any of
-# these will become a portfolio, so it occupies a plan slot before its
-# PORTFOLIO# record exists.
+# Upload states that are still moving through the pipeline. Used for the
+# CONCURRENCY cap (MAX_ACTIVE_UPLOADS), which limits how many resumes may be in
+# the pipeline at once regardless of plan.
 _IN_FLIGHT_STATUSES = frozenset({
     'PENDING_UPLOAD', 'VALIDATING', 'VALIDATED',
     'EXTRACTING_TEXT', 'AWAITING_SELECTION', 'QUEUED_FOR_AI',
     'AI_PROCESSING', 'GENERATING',
 })
 
-# Paused / pre-AI states wait on the user and have no natural timeout. Past this
-# age they are treated as abandoned and stop occupying a slot, so a forgotten
-# upload can never permanently consume a free user's single portfolio.
+# Upload states that occupy a PLAN slot — deliberately narrower than in-flight.
+#
+# A slot is only taken once generation has actually been committed, because only
+# then is the upload guaranteed to become a portfolio (and only then has it cost
+# anything). Everything earlier — PENDING_UPLOAD through AWAITING_SELECTION — is
+# a resume sitting on the profession/template screen that the user may never
+# finish.
+#
+# Why this matters: those earlier records have no PORTFOLIO# entry, so they are
+# invisible on the dashboard. Counting them meant a user who abandoned the
+# template screen was told "you've used your portfolio — delete it to start
+# over" with nothing on screen to delete, and no way out until the record aged
+# out. On a 1-portfolio plan a single abandoned upload locked the account.
+#
+# Nothing is lost by excluding them: start_generation re-checks the cap at the
+# moment generation begins, so an abandoned upload can never be used to sneak
+# past the limit — it just stops blocking the user in the meantime. Flooding is
+# still bounded by the separate MAX_ACTIVE_UPLOADS concurrency cap.
+_SLOT_STATUSES = frozenset({'QUEUED_FOR_AI', 'AI_PROCESSING', 'GENERATING'})
+
+# Past this age an in-flight record is treated as abandoned and stops counting
+# for BOTH caps. Applied to every in-flight status, not just the user-paused
+# ones: a pipeline that dies mid-run (failed AI call, Lambda timeout) leaves a
+# record stuck at AI_PROCESSING/GENERATING forever, and that used to be a
+# permanent ghost slot with no way for the user to clear it.
 _STALE_UPLOAD_EXPIRY_HOURS = float(os.environ.get('STALE_UPLOAD_EXPIRY_HOURS', 24))
-_EXPIRABLE_STATUSES = frozenset({'PENDING_UPLOAD', 'AWAITING_SELECTION'})
 
 
 def _parse_iso(value):
@@ -305,18 +326,16 @@ def _parse_iso(value):
 
 
 def _is_stale(item, now) -> bool:
-    """True when a paused/pre-AI record has sat idle past the expiry window."""
-    if item.get('status') not in _EXPIRABLE_STATUSES:
-        return False
+    """True when an in-flight record has sat idle past the expiry window."""
     last_touched = _parse_iso(item.get('updatedAt')) or _parse_iso(item.get('createdAt'))
     if last_touched is None:
         return False  # no timestamp — count it to stay safe
     return (now - last_touched).total_seconds() / 3600.0 >= _STALE_UPLOAD_EXPIRY_HOURS
 
 
-def active_upload_ids(user_id: str) -> set:
+def _upload_ids_with_status(user_id: str, statuses: frozenset) -> set:
     """
-    uploadIds still moving through the pipeline.
+    uploadIds whose live status is in `statuses` and which are not stale.
 
     Reads the live `status` attribute rather than GSI1PK, which is never updated
     after record creation and so cannot be trusted for this.
@@ -336,7 +355,7 @@ def active_upload_ids(user_id: str) -> set:
     while True:
         resp = table.query(**query_kwargs)
         for item in resp.get('Items', []):
-            if item.get('status') in _IN_FLIGHT_STATUSES and not _is_stale(item, now):
+            if item.get('status') in statuses and not _is_stale(item, now):
                 sk = item.get('SK', '')
                 ids.add(item.get('uploadId') or sk.replace('UPLOAD#', ''))
         last_key = resp.get('LastEvaluatedKey')
@@ -346,20 +365,37 @@ def active_upload_ids(user_id: str) -> set:
     return ids
 
 
+def active_upload_ids(user_id: str) -> set:
+    """Uploads anywhere in the pipeline — feeds the concurrency cap."""
+    return _upload_ids_with_status(user_id, _IN_FLIGHT_STATUSES)
+
+
+def committed_upload_ids(user_id: str) -> set:
+    """
+    Uploads that have been committed to generation — these occupy a plan slot.
+
+    Narrower than active_upload_ids on purpose; see _SLOT_STATUSES.
+    """
+    return _upload_ids_with_status(user_id, _SLOT_STATUSES)
+
+
 def used_portfolio_slots(user_id: str, exclude_upload_id: str | None = None) -> int:
     """
     How many of the plan's portfolio slots are already spoken for.
 
-    The union of finished portfolios and in-flight uploads — a union, not a sum,
-    because mid-pipeline an upload owns both an UPLOAD# and a PORTFOLIO# record
-    and must not be counted twice.
+    The union of finished portfolios and uploads already committed to
+    generation — a union, not a sum, because mid-pipeline an upload owns both an
+    UPLOAD# and a PORTFOLIO# record and must not be counted twice.
+
+    Uploads still awaiting the user's profession/template choice are NOT counted
+    (see _SLOT_STATUSES): they are invisible on the dashboard, so counting them
+    blocked users with nothing they could delete to recover.
 
     `exclude_upload_id` drops the upload the caller is currently acting on.
-    start_generation MUST pass it: the upload being started is itself in-flight,
-    so without it a free user's very first portfolio would be rejected as their
-    second.
+    start_generation MUST pass it: it flips its own record to QUEUED_FOR_AI, so
+    without this a user's very first portfolio could be rejected as their second.
     """
-    slots = portfolio_upload_ids(user_id) | active_upload_ids(user_id)
+    slots = portfolio_upload_ids(user_id) | committed_upload_ids(user_id)
     slots.discard(exclude_upload_id)
     return len(slots)
 
