@@ -173,6 +173,13 @@ Profession-specific sections:
                       investment_portfolios[] {portfolio_type, assets_under_management, performance_return}
   civil_engineer:     projects, software_proficiency[]
   mechanical_engineer:projects, software_proficiency[]
+  accountant:         engagements[] {client_name, engagement_type, industry, start_date, end_date,
+                        description, responsibilities[], deliverables[], standards_applied[],
+                        tools_used[], engagement_value, measurable_outcomes[], images[]},
+                      software_proficiency[], compliance_expertise[]
+  hr:                 hr_programs[] {program_name, program_type, organization, start_date, end_date,
+                        description, scope, activities[], tools_used[], measurable_outcomes[]},
+                      software_proficiency[], compliance_expertise[]
 
 custom_sections[i]: section_id, title, display_type('cards'|'list'|'timeline'),
   items[] { label, value, subtitle, tags[], url }

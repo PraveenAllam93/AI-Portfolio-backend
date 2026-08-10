@@ -20,13 +20,15 @@ Allowlisted scalar fields (portfolioContent top-level):
 
 Allowlisted array sections (parsedData keys):
   experience, projects, skills, education, certifications, achievements,
-  awards, campaigns, financial_modeling, investment_portfolios
+  awards, campaigns, financial_modeling, investment_portfolios,
+  engagements (accountant), hr_programs (hr)
 
 Allowlisted string sections (parsedData keys):
   design_philosophy  — 2000 chars
 
 Allowlisted list sections (parsedData keys, list of strings):
   software_proficiency  — 50 items, 200 chars each
+  compliance_expertise  — 50 items, 200 chars each
 
 Security notes:
   - userId in path MUST match the Cognito token sub.
@@ -43,6 +45,8 @@ from datetime import datetime, timezone
 from urllib.parse import unquote
 
 import boto3
+
+import entitlements as ent
 
 dynamodb = boto3.resource('dynamodb')
 lambda_client = boto3.client('lambda')
@@ -73,6 +77,8 @@ _VALID_TEMPLATE_IDS: frozenset = frozenset({
     'atelier', 'terra', 'ember', 'folio',
     'obsidian', 'muse', 'prism', 'salon',
     'voltage', 'nimbus', 'citrus', 'console', 'neural', 'flux', 'monolith', 'helix', 'orbit', 'iris', 'terminal', 'beacon',
+    'meridian', 'cambria', 'verdant',
+    'haven', 'solace', 'quill', 'journal', 'atrium',
 })
 
 # Shape B: array sections in parsedData -> max item count
@@ -87,6 +93,8 @@ _ALLOWED_ARRAY_SECTIONS: dict[str, int] = {
     'campaigns': 30,
     'financial_modeling': 30,
     'investment_portfolios': 30,
+    'engagements': 50,
+    'hr_programs': 30,
     'custom_sections': 20,
 }
 
@@ -98,6 +106,7 @@ _ALLOWED_STRING_SECTIONS: dict[str, int] = {
 # Shape B: list-of-strings sections in parsedData -> (max items, max chars per item)
 _ALLOWED_LIST_SECTIONS: dict[str, tuple] = {
     'software_proficiency': (50, 200),
+    'compliance_expertise': (50, 200),
 }
 
 # Shape B: object sections in parsedData -> allowed top-level keys
@@ -304,7 +313,8 @@ def _handle_field_patch(body: dict, path_user_id: str, upload_id: str, correlati
 _ALL_SECTION_KEYS = {
     'experience', 'projects', 'skills', 'education', 'certifications',
     'achievements', 'awards', 'campaigns', 'financial_modeling',
-    'investment_portfolios', 'design_philosophy', 'software_proficiency',
+    'investment_portfolios', 'engagements', 'hr_programs',
+    'design_philosophy', 'software_proficiency', 'compliance_expertise',
     'custom_sections',
 }
 
@@ -404,6 +414,15 @@ def _handle_config_patch(data: object, path_user_id: str, upload_id: str, correl
             return _response(400, {
                 'error': f'Invalid templateId. Must be one of: {", ".join(sorted(_VALID_TEMPLATE_IDS))}'
             })
+        # Plan gate. Without this the template restriction is trivially bypassed:
+        # generate with a free template, then switch to a paid one from the edit
+        # page — which patches straight through to here.
+        plan = ent.get_plan(path_user_id)
+        if not ent.template_allowed(plan, template_id):
+            _log('WARNING', 'Paid template rejected for plan',
+                 correlationId=correlation_id, userId=path_user_id,
+                 templateId=template_id, plan=plan)
+            return ent.template_limit_response(plan, template_id)
         update_parts.append('#templateId = :templateId')
         expr_names['#templateId'] = 'templateId'
         expr_values[':templateId'] = template_id

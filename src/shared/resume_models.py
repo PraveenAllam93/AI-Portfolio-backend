@@ -10,6 +10,15 @@ Supported categories (must match ALLOWED_CATEGORIES):
     - designer
     - marketing
     - finance
+    - civil_engineer
+    - mechanical_engineer
+    - accountant
+    - hr
+
+Every top-level field added here must ALSO be threaded through the frontend
+(ParsedData type, base.ts normalize(), the edit page SECTION_CONFIG and at
+least one template) — _strip_foreign_keys keeps unknown keys out of DynamoDB,
+but normalize() silently drops known-to-Python/unknown-to-TS fields at render.
 """
 
 from typing import List, Literal, Optional, Dict
@@ -21,7 +30,9 @@ ALLOWED_CATEGORIES = {
     'marketing',
     'finance',
     'civil_engineer',
-    'mechanical_engineer'
+    'mechanical_engineer',
+    'accountant',
+    'hr'
 }
 
 
@@ -794,6 +805,186 @@ class MechanicalEngineerModel(BaseModel):
         )
     )
 
+# =====================================================
+# ACCOUNTANT
+# =====================================================
+
+
+class AccountingEngagement(BaseModel):
+    """One audit / tax / bookkeeping / advisory engagement or client account.
+
+    The accountant's analogue of `projects` — practice accountants list clients
+    and engagements, in-house accountants list recurring close/reporting cycles.
+    """
+
+    client_name: Optional[str] = Field(
+        description="Client, entity or business unit served. Use the employer's own name (or 'Internal — Finance') for in-house work"
+    )
+    engagement_type: Optional[str] = Field(
+        description="Type of engagement such as Statutory Audit, Internal Audit, Tax Filing, Bookkeeping, Month-End Close, Payroll, Due Diligence, Forensic Audit, Advisory"
+    )
+    industry: Optional[str] = Field(
+        description="Industry or sector of the client such as Manufacturing, Retail, SaaS, Healthcare"
+    )
+    start_date: Optional[str] = Field(
+        description="Engagement start date in YYYY-MM format")
+    end_date: Optional[str] = Field(
+        description="Engagement end date in YYYY-MM format, or null if ongoing")
+    description: Optional[str] = Field(
+        description="Scope and nature of the engagement")
+    responsibilities: Optional[List[str]] = Field(
+        description="Responsibilities handled such as ledger scrutiny, reconciliations, statutory filings, variance analysis"
+    )
+    deliverables: Optional[List[str]] = Field(
+        description="Outputs produced such as audited financial statements, tax returns filed, MIS reports, audit memos"
+    )
+    standards_applied: Optional[List[str]] = Field(
+        description="Accounting, audit or tax frameworks applied such as GAAP, IFRS, Ind AS, SOX, GST, VAT, IRS, Companies Act"
+    )
+    tools_used: Optional[List[str]] = Field(
+        description="Accounting systems used on this engagement such as Tally, SAP FICO, QuickBooks, Xero, Oracle NetSuite, Advanced Excel"
+    )
+    engagement_value: Optional[str] = Field(
+        description="Scale of the books handled such as turnover audited, AUM, AP/AR volume or budget size"
+    )
+    measurable_outcomes: Optional[List[str]] = Field(
+        description="Quantified results such as 'closed books 3 days faster', 'recovered $250K in duplicate payments', 'zero audit qualifications'"
+    )
+    images: Optional[List[str]] = Field(
+        default_factory=list,
+        description="List of image URLs for this engagement (LLM will usually return an empty list; the user uploads these later from the editor)"
+    )
+
+
+class AccountantModel(BaseModel):
+    profile: Profile
+
+    skills: Optional[List[SkillGroup]] = Field(
+        description="Accounting competencies grouped by category such as Financial Reporting, Taxation, Audit & Assurance, Accounts Payable/Receivable, Payroll, Budgeting & Forecasting, Cost Accounting"
+    )
+
+    software_proficiency: Optional[List[str]] = Field(
+        description="Accounting and ERP software such as Tally ERP, SAP FICO, QuickBooks, Xero, Zoho Books, Oracle NetSuite, Sage, Advanced Excel, Power BI"
+    )
+
+    compliance_expertise: Optional[List[str]] = Field(
+        description="Accounting standards, tax and regulatory frameworks the person works under such as US GAAP, IFRS, Ind AS, SOX, GST, VAT, Income Tax, Companies Act, FEMA, TDS"
+    )
+
+    experience: Optional[List[BaseExperience]]
+
+    engagements: Optional[List[AccountingEngagement]] = Field(
+        description="Audit, tax, bookkeeping or advisory engagements and key client accounts handled"
+    )
+
+    achievements: Optional[List[AchievementItem]]
+
+    education: Optional[List[EducationItem]]
+
+    certifications: Optional[List[CertificationItem]] = Field(
+        description="Professional qualifications and licences such as CPA, CA, ACCA, CMA, CIA, EA, CS — include the issuing body and licence/membership number only if it is a professional body membership, never a personal ID"
+    )
+
+    custom_sections: Optional[List[CustomSection]] = Field(
+        default_factory=list,
+        description=(
+            "Fallback for resume sections that have no home in the fields above. "
+            "Use as a LAST RESORT only, never duplicating content already placed "
+            "in another field. Exclude personal/identity details (date of birth, "
+            "marital status, ID numbers, address, salary), declarations and "
+            "references — those must be omitted entirely, not captured here. "
+            "Also holds custom sections the user adds later from the editor"
+        )
+    )
+
+
+# =====================================================
+# HUMAN RESOURCES
+# =====================================================
+
+
+class HRProgram(BaseModel):
+    """One HR programme, initiative or people project.
+
+    Covers hiring drives, onboarding revamps, L&D curricula, D&I initiatives,
+    engagement surveys, comp & benefit redesigns and HRIS rollouts — the HR
+    analogue of marketing's `campaigns`.
+    """
+
+    program_name: Optional[str] = Field(
+        description="Name of the programme or initiative such as 'Campus Hiring Drive 2023', 'Global Onboarding Revamp'"
+    )
+    program_type: Optional[str] = Field(
+        description="Type such as Talent Acquisition, Onboarding, Learning & Development, Diversity & Inclusion, Employee Engagement, Performance Management, Compensation & Benefits, HRIS Implementation, Policy & Compliance, Employee Relations"
+    )
+    organization: Optional[str] = Field(
+        description="Employer or client the programme was run for")
+    start_date: Optional[str] = Field(
+        description="Programme start date in YYYY-MM format")
+    end_date: Optional[str] = Field(
+        description="Programme end date in YYYY-MM format, or null if ongoing")
+    description: Optional[str] = Field(
+        description="What the programme set out to do and why")
+    scope: Optional[str] = Field(
+        description="Population and reach such as '1,200 employees across 4 locations' or '3 business units, 2 countries'"
+    )
+    activities: Optional[List[str]] = Field(
+        description="Actions taken such as redesigned the interview loop, built a competency framework, ran manager training"
+    )
+    tools_used: Optional[List[str]] = Field(
+        description="HR systems used such as Workday, SAP SuccessFactors, BambooHR, Greenhouse, Lever, Darwinbox, Zoho People, Keka"
+    )
+    measurable_outcomes: Optional[List[str]] = Field(
+        description="Quantified people metrics such as 'time-to-hire down 38%', 'attrition 22% to 11%', 'eNPS +24 points', 'offer acceptance 92%'"
+    )
+    images: Optional[List[str]] = Field(
+        default_factory=list,
+        description="List of image URLs for this programme (LLM will usually return an empty list; the user uploads these later from the editor)"
+    )
+
+
+class HRModel(BaseModel):
+    profile: Profile
+
+    skills: Optional[List[SkillGroup]] = Field(
+        description="HR competencies grouped by category such as Talent Acquisition, Employee Relations, Performance Management, Compensation & Benefits, Learning & Development, HR Operations, Payroll, Workforce Planning, HR Analytics"
+    )
+
+    software_proficiency: Optional[List[str]] = Field(
+        description="HRIS, ATS and people tools such as Workday, SAP SuccessFactors, BambooHR, Greenhouse, Lever, Darwinbox, Zoho People, Keka, ADP, Excel"
+    )
+
+    compliance_expertise: Optional[List[str]] = Field(
+        description="Employment law and statutory frameworks the person works under such as FLSA, EEOC, FMLA, ADA, GDPR, POSH Act, Shops & Establishments Act, PF, ESI, Labour Codes"
+    )
+
+    experience: Optional[List[BaseExperience]]
+
+    hr_programs: Optional[List[HRProgram]] = Field(
+        description="HR programmes, hiring drives and people initiatives owned or delivered"
+    )
+
+    achievements: Optional[List[AchievementItem]]
+
+    education: Optional[List[EducationItem]]
+
+    certifications: Optional[List[CertificationItem]] = Field(
+        description="HR certifications such as SHRM-CP, SHRM-SCP, PHR, SPHR, CIPD, HRCI, Certified Recruiter"
+    )
+
+    custom_sections: Optional[List[CustomSection]] = Field(
+        default_factory=list,
+        description=(
+            "Fallback for resume sections that have no home in the fields above. "
+            "Use as a LAST RESORT only, never duplicating content already placed "
+            "in another field. Exclude personal/identity details (date of birth, "
+            "marital status, ID numbers, address, salary), declarations and "
+            "references — those must be omitted entirely, not captured here. "
+            "Also holds custom sections the user adds later from the editor"
+        )
+    )
+
+
 # ---------------------------------------------------------------------------
 # Registry — maps category string → (model class, prompt instruction)
 # ---------------------------------------------------------------------------
@@ -855,6 +1046,39 @@ _CATEGORY_REGISTRY: Dict[str, dict] = {
             "Pay special attention to product design, manufacturing processes, "
             "CAD/CAE software, machinery, maintenance, engineering calculations, "
             "materials, testing, and industrial standards."
+        ),
+    },
+
+    'accountant': {
+        'model': AccountantModel,
+        'schema_json': AccountantModel.model_json_schema(),
+        'instruction': (
+            "You are parsing an accountant's resume (accounting, audit, taxation "
+            "or bookkeeping — NOT corporate finance or investment banking). "
+            "Route client accounts, audits, tax filings and close cycles into "
+            "'engagements'; accounting/ERP software into 'software_proficiency'; "
+            "accounting standards, tax and statutory frameworks (GAAP, IFRS, "
+            "Ind AS, SOX, GST, VAT, Income Tax) into 'compliance_expertise'; and "
+            "professional qualifications (CPA, CA, ACCA, CMA, EA) into "
+            "'certifications'. Keep quantified impact — turnover audited, "
+            "reconciliation volumes, days saved on close, recoveries — in the "
+            "engagement outcomes or the role's key_points."
+        ),
+    },
+
+    'hr': {
+        'model': HRModel,
+        'schema_json': HRModel.model_json_schema(),
+        'instruction': (
+            "You are parsing a human resources professional's resume. "
+            "Route hiring drives, onboarding, L&D, D&I, engagement and HRIS "
+            "rollouts into 'hr_programs'; HRIS/ATS tools into "
+            "'software_proficiency'; employment law and statutory frameworks "
+            "(FLSA, EEOC, FMLA, POSH, PF, ESI, Labour Codes) into "
+            "'compliance_expertise'; and SHRM/PHR/CIPD credentials into "
+            "'certifications'. Keep people metrics — time-to-hire, attrition, "
+            "headcount supported, offer acceptance, eNPS — in the programme "
+            "outcomes or the role's key_points."
         ),
     },
 }

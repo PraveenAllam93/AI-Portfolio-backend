@@ -35,16 +35,25 @@ ALLOWED_PROFESSIONS = {
     'finance',
     'civil_engineer',
     'mechanical_engineer',
+    'accountant',
+    'hr',
 }
 
 # Short human-readable hints to help the model disambiguate.
+# 'finance' and 'accountant' are the closest pair: finance is forward-looking
+# capital work (deals, valuation, FP&A), accountant is books-and-compliance work
+# (ledgers, close, audit, tax). 'accounting' and 'audit' were removed from the
+# finance hint when accountant was added — left in place they pulled every
+# CA/CPA resume into the finance schema, which has no engagements section.
 _PROFESSION_HINTS = {
     'software_engineer': 'software development, programming, web/backend/mobile, DevOps, data/ML engineering',
     'designer': 'UI/UX, graphic/visual/product design, branding, illustration, motion',
     'marketing': 'growth, content, SEO/SEM, brand, social media, campaigns, product marketing',
-    'finance': 'accounting, banking, investment, financial analysis, audit, consulting',
+    'finance': 'investment banking, equity/credit research, valuation, FP&A, treasury, risk, private equity, financial consulting',
     'civil_engineer': 'structural/infrastructure/construction, site engineering, RC/steel design',
     'mechanical_engineer': 'mechanical design, thermal/HVAC, CAD/CAE, manufacturing, automotive/aerospace',
+    'accountant': 'accounting, bookkeeping, statutory/internal audit, taxation (GST/VAT/income tax), month-end close, AP/AR, payroll accounting, CPA/CA/ACCA practice',
+    'hr': 'human resources, talent acquisition/recruiting, employee relations, onboarding, L&D, compensation & benefits, HR operations, HRIS/people ops',
 }
 
 # Only the first chunk of the resume is needed to classify the field.

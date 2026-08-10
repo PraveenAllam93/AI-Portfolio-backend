@@ -150,6 +150,8 @@ async function getUsername(userId: string): Promise<string | null> {
 const DEFAULT_SECTION_ORDER = [
 	'experience',
 	'projects',
+	'engagements',
+	'hr_programs',
 	'skills',
 	'education',
 	'certifications',
@@ -160,6 +162,7 @@ const DEFAULT_SECTION_ORDER = [
 	'investment_portfolios',
 	'design_philosophy',
 	'software_proficiency',
+	'compliance_expertise',
 	'custom_sections',
 ];
 

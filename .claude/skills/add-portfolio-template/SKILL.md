@@ -61,13 +61,29 @@ placement verbatim, then swap in your design's CSS/markup.
 | 2 | `frontend: src/lib/templates/index.ts` | **MODIFY** — `import`; add to `TEMPLATES` map, `TEMPLATE_META` (name/accent/**profession**), and (as needed) `TEMPLATE_FIELDS`, `CUSTOM_DISPLAY_TYPES`, `SUMMARY_IMAGE_TEMPLATES`, `CORE_EXPERTISE_TEMPLATES`, `CONTACT_TAGLINE_TEMPLATES`, `DEFAULT_CONTACT_TAGLINE` |
 | 3 | `frontend: src/routes/app/resumes/upload/+page.svelte` | **MODIFY** — add a `{ id, name, tag }` entry to the **hardcoded** `TEMPLATES_BY_PROFESSION` array for the target profession (this grid is NOT driven by `index.ts`) |
 | 4 | `backend: src/lambdas/upload/handler.py` | **MODIFY** — add `'{id}'` to `ALLOWED_TEMPLATES` |
-| 5 | `backend: src/lambdas/auth/patch_portfolio.py` | **MODIFY** — add `'{id}'` to `_VALID_TEMPLATE_IDS` |
-| 6 | `backend: src/lambdas/auth/generate_project_image.py` | **MODIFY (if dark theme)** — add `'{id}'` to `_DARK_TEMPLATES` so AI project images get a dark background |
-| 7 | `backend: build-portfolio-lambda.sh` + `terraform apply` | **RUN** — bundle templates into the Lambda and deploy |
+| 5 | `backend: src/lambdas/auth/start_generation.py` | **MODIFY** — add `'{id}'` to `ALLOWED_TEMPLATES` |
+| 6 | `backend: src/lambdas/auth/patch_portfolio.py` | **MODIFY** — add `'{id}'` to `_VALID_TEMPLATE_IDS` |
+| 7 | **Decide the tier** (see below) | **DECIDE** — paid by default; only touch the free lists if it is meant to be free |
+| 8 | `backend: src/lambdas/auth/generate_project_image.py` | **MODIFY (if dark theme)** — add `'{id}'` to `_DARK_TEMPLATES` so AI project images get a dark background |
+| 9 | `backend: build-portfolio-lambda.sh` + `terraform apply` | **RUN** — bundle templates into the Lambda and deploy |
 
-> **Both backend allowlists (#4, #5) gate the template ID server-side** — miss either and the
-> user gets "Invalid templateId" (upload = #4; changing template from the edit page = #5).
+> **All THREE backend allowlists (#4, #5, #6) gate the template ID server-side** — miss any and
+> the user gets "Invalid templateId": #4 on upload, #5 when generation actually starts (the
+> deferred-profession flow lands here), #6 when changing template from the edit page.
 > The edit page (`[userId]/[uploadId]/edit`) itself needs no code change.
+
+> **Tier (#7) — a new template is PAID unless you deliberately make it free.**
+> Nothing needs editing for a paid template: both free lists are allowlists, so an unlisted
+> id is automatically premium and renders with a ★ in the wizard and edit dropdown.
+> To make it free, add the id to BOTH, or the two halves disagree:
+> - `backend: src/lambdas/auth/entitlements.py` → `FREE_TEMPLATES` — the one that actually
+>   enforces. Then `cp` that file over `src/lambdas/upload/entitlements.py` (byte-identical
+>   copy; the upload Lambda is packaged from its own `source_dir` and cannot import it).
+> - `frontend: src/lib/templates/index.ts` → `FREE_TEMPLATE_IDS` — presentation fallback used
+>   before `GET /entitlements` responds.
+>
+> Backend-only ⇒ a free template shows a ★ and an upgrade prompt it does not need.
+> Frontend-only ⇒ the star disappears but selecting it still 402s — the worse failure.
 
 > **WSL note:** `node` is installed via nvm and is NOT on the non-interactive PATH — source it
 > first: `export NVM_DIR="$HOME/.nvm"; . "$NVM_DIR/nvm.sh"` before `bash build-portfolio-lambda.sh`.
@@ -114,6 +130,8 @@ profession-specific ones only for their category:
 | `finance` | `financial_modeling`, `investment_portfolios` |
 | `civil_engineer` | `projects`, `software_proficiency` |
 | `mechanical_engineer` | `projects`, `software_proficiency` |
+| `accountant` | `engagements`, `software_proficiency`, `compliance_expertise` |
+| `hr` | `hr_programs`, `software_proficiency`, `compliance_expertise` |
 
 Rules:
 - **Render every section the profession's model expects**, even if the source design omits it

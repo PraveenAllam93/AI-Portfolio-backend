@@ -34,6 +34,8 @@ from urllib.parse import unquote
 
 import boto3
 
+import entitlements as ent
+
 dynamodb = boto3.resource('dynamodb')
 secrets_client = boto3.client('secretsmanager')
 
@@ -75,8 +77,13 @@ _SECTION_ITEM_FIELDS: dict = {
     'experience':         ['description', 'key_points'],
     'projects':           ['description', 'responsibilities', 'measurable_outcomes'],
     'achievements':       ['description'],
-    'campaigns':          ['performance_metrics'],
+    # challenge/approach are the case-study fields (momentum). They are flagged
+    # aiEnhanceable in the edit form, so omitting them here made the ✦ AI button
+    # on those two fields 400 at the enhancer.
+    'campaigns':          ['performance_metrics', 'challenge', 'approach'],
     'financial_modeling': ['outcome'],
+    'engagements':        ['description', 'responsibilities', 'deliverables', 'measurable_outcomes'],
+    'hr_programs':        ['description', 'activities', 'measurable_outcomes'],
 }
 
 # Shape C: context sections per category for skills enhancement
@@ -87,6 +94,8 @@ _SKILLS_CONTEXT_SECTIONS: dict = {
     'finance':           ['experience', 'financial_modeling', 'investment_portfolios', 'certifications'],
     'civil_engineer':       ['experience', 'projects', 'certifications'],
     'mechanical_engineer':  ['experience', 'projects', 'certifications'],
+    'accountant':        ['experience', 'engagements', 'certifications'],
+    'hr':                ['experience', 'hr_programs', 'certifications'],
 }
 _SKILLS_CONTEXT_DEFAULT = ['experience', 'certifications']
 
@@ -215,24 +224,59 @@ def lambda_handler(event, context):
     except (json.JSONDecodeError, ValueError):
         return _response(400, {'error': 'Invalid JSON body'})
 
+    # Every branch below is exactly one paid OpenAI call, so each one is
+    # metered. The two pools are deliberately separate: analysing the portfolio
+    # produces a panel of suggestion cards, and CLICKING a card fires a second,
+    # separately-billed enhance call — so one analyse run can spawn many
+    # enhancements, and a single shared pool would let the cheap action starve
+    # the expensive one (or vice versa).
+    is_analyze = body.get('action') == 'analyze_and_suggest'
+
     # Shape D: LLM-generated portfolio suggestions (no instruction needed)
-    if body.get('action') == 'analyze_and_suggest':
-        return _handle_analyze_and_suggest(body, path_user_id, upload_id, correlation_id)
+    if is_analyze:
+        action = ent.ACTION_AI_ANALYZE
+        instruction = ''
+    else:
+        # Validate BEFORE metering so a malformed request never costs a credit.
+        instruction = str(body.get('instruction', '')).strip()
+        if not instruction:
+            return _response(400, {'error': 'instruction is required'})
+        if len(instruction) > _MAX_INSTRUCTION_CHARS:
+            return _response(400, {
+                'error': f'instruction exceeds the {_MAX_INSTRUCTION_CHARS}-character limit'
+            })
+        if 'field' not in body and 'section' not in body:
+            return _response(400, {
+                'error': 'Request must include either "field", "section", or action="analyze_and_suggest"'
+            })
+        action = ent.ACTION_AI_ENHANCE
 
-    instruction = str(body.get('instruction', '')).strip()
-    if not instruction:
-        return _response(400, {'error': 'instruction is required'})
-    if len(instruction) > _MAX_INSTRUCTION_CHARS:
-        return _response(400, {
-            'error': f'instruction exceeds the {_MAX_INSTRUCTION_CHARS}-character limit'
-        })
+    plan = ent.get_plan(path_user_id)
+    allowed, limit_info = ent.consume_daily(path_user_id, plan, action)
+    if not allowed:
+        _log('INFO', 'AI daily limit reached',
+             correlationId=correlation_id, userId=path_user_id,
+             action=action, plan=plan)
+        return ent.limit_response(limit_info, ent.daily_limit_message(limit_info))
 
-    if 'field' in body:
-        return _handle_field_enhance(body, path_user_id, upload_id, instruction, correlation_id)
-    if 'section' in body:
-        return _handle_section_enhance(body, path_user_id, upload_id, instruction, correlation_id)
+    if is_analyze:
+        result = _handle_analyze_and_suggest(body, path_user_id, upload_id, correlation_id)
+    elif 'field' in body:
+        result = _handle_field_enhance(body, path_user_id, upload_id, instruction, correlation_id)
+    else:
+        result = _handle_section_enhance(body, path_user_id, upload_id, instruction, correlation_id)
 
-    return _response(400, {'error': 'Request must include either "field", "section", or action="analyze_and_suggest"'})
+    # Refund on anything that is not a clean success. Every non-200 path here
+    # either never reached OpenAI (missing portfolio, bad section/index) or got
+    # an unusable answer, and the user should not pay a credit for that.
+    #
+    # Note what is deliberately NOT refunded: analyze returns 200 with an empty
+    # suggestions array when the model replies with malformed JSON. That call
+    # was made and billed, so the credit is genuinely spent.
+    if result.get('statusCode') != 200:
+        ent.refund_daily(path_user_id, action)
+
+    return result
 
 
 # ---------------------------------------------------------------------------
@@ -601,22 +645,27 @@ _ENHANCEABLE_FIELDS = {
     'experience':         ['description', 'key_points'],
     'projects':           ['description', 'responsibilities', 'measurable_outcomes'],
     'achievements':       ['description'],
-    'campaigns':          ['performance_metrics'],
+    'campaigns':          ['performance_metrics', 'challenge', 'approach'],
     'financial_modeling': ['outcome'],
+    'engagements':        ['description', 'responsibilities', 'deliverables', 'measurable_outcomes'],
+    'hr_programs':        ['description', 'activities', 'measurable_outcomes'],
     # profile and skills are handled separately
 }
 
 _SUGGESTIONS_SCHEMA = (
     'Return a JSON array of suggestion objects. Each object must have these exact keys:\n'
     '  "id": unique string formatted as "<section>-<index>-<field>", e.g. "experience-0-key_points"\n'
-    '  "section": one of "profile", "experience", "projects", "skills", "achievements", "campaigns", "financial_modeling"\n'
+    '  "section": one of "profile", "experience", "projects", "skills", "achievements", "campaigns", '
+    '"financial_modeling", "engagements", "hr_programs"\n'
     '  "index": integer 0-based index within the section array. Omit (or null) only for profile and skills.\n'
     '  "field": MUST be one of the allowed fields below for each section — do not invent other field names:\n'
     '    - experience  → "description" or "key_points"\n'
     '    - projects    → "description", "responsibilities", or "measurable_outcomes"\n'
     '    - achievements → "description"\n'
-    '    - campaigns   → "performance_metrics"\n'
+    '    - campaigns   → "performance_metrics", "challenge", or "approach"\n'
     '    - financial_modeling → "outcome"\n'
+    '    - engagements → "description", "responsibilities", "deliverables", or "measurable_outcomes"\n'
+    '    - hr_programs → "description", "activities", or "measurable_outcomes"\n'
     '    - profile     → omit "field"; use "profileKey" instead\n'
     '    - skills      → omit "field" and "index"\n'
     '  "profileKey": for profile section ONLY — must be one of "bio", "headline", "uniqueValue"\n'
@@ -727,6 +776,13 @@ def _build_portfolio_summary(parsed_data, portfolio_content):
             metrics = c.get('performance_metrics') or []
             parts.append(f"      Performance metrics ({len(metrics) if isinstance(metrics, list) else 0}):")
             parts.append(_fmt_list(metrics))
+            # Case-study fields — without these the model suggests "add a
+            # challenge section" on campaigns that already have one.
+            challenge = str(c.get('challenge', '') or '')
+            parts.append(f"      Challenge: {challenge[:300] if challenge else '(empty)'}")
+            approach = c.get('approach') or []
+            parts.append(f"      Approach ({len(approach) if isinstance(approach, list) else 0}):")
+            parts.append(_fmt_list(approach))
 
     awards = parsed_data.get('awards') or []
     if awards:
@@ -755,6 +811,45 @@ def _build_portfolio_summary(parsed_data, portfolio_content):
         parts.append(f"\n=== INVESTMENT PORTFOLIOS ({len(investment_portfolios)} entries) ===")
         for i, ip in enumerate(investment_portfolios[:4]):
             parts.append(f"  [{i}] {ip.get('portfolio_type', '')} — AUM: {ip.get('assets_under_management', '')}")
+
+    compliance_expertise = parsed_data.get('compliance_expertise') or []
+    if compliance_expertise:
+        parts.append(f"\n=== COMPLIANCE & REGULATORY EXPERTISE ===")
+        parts.append(', '.join(str(s) for s in compliance_expertise[:20]))
+
+    engagements = parsed_data.get('engagements') or []
+    if engagements:
+        parts.append(f"\n=== ENGAGEMENTS ({len(engagements)} entries) ===")
+        for i, en in enumerate(engagements[:6]):
+            parts.append(f"  [{i}] {en.get('client_name', '')} — {en.get('engagement_type', '')} ({en.get('industry', '')})")
+            desc = str(en.get('description', '') or '')
+            parts.append(f"      Description: {desc[:300] if desc else '(empty)'}")
+            resp = en.get('responsibilities') or []
+            parts.append(f"      Responsibilities ({len(resp) if isinstance(resp, list) else 0}):")
+            parts.append(_fmt_list(resp))
+            deliv = en.get('deliverables') or []
+            parts.append(f"      Deliverables ({len(deliv) if isinstance(deliv, list) else 0}):")
+            parts.append(_fmt_list(deliv))
+            out = en.get('measurable_outcomes') or []
+            parts.append(f"      Measurable outcomes ({len(out) if isinstance(out, list) else 0}):")
+            parts.append(_fmt_list(out))
+
+    hr_programs = parsed_data.get('hr_programs') or []
+    if hr_programs:
+        parts.append(f"\n=== HR PROGRAMS ({len(hr_programs)} entries) ===")
+        for i, pg in enumerate(hr_programs[:6]):
+            parts.append(f"  [{i}] {pg.get('program_name', '')} ({pg.get('program_type', '')})")
+            scope = pg.get('scope', '')
+            if scope:
+                parts.append(f"      Scope: {scope}")
+            desc = str(pg.get('description', '') or '')
+            parts.append(f"      Description: {desc[:300] if desc else '(empty)'}")
+            acts = pg.get('activities') or []
+            parts.append(f"      Activities ({len(acts) if isinstance(acts, list) else 0}):")
+            parts.append(_fmt_list(acts))
+            out = pg.get('measurable_outcomes') or []
+            parts.append(f"      Measurable outcomes ({len(out) if isinstance(out, list) else 0}):")
+            parts.append(_fmt_list(out))
 
     ach = parsed_data.get('achievements') or []
     parts.append(f"\n=== ACHIEVEMENTS ({len(ach)} entries) ===")
@@ -804,6 +899,21 @@ _CATEGORY_GUIDANCE = {
         "projects (description, responsibilities, measurable_outcomes — product/thermal design, manufacturing, "
         "simulation), skills (CAD/CAE tools like SolidWorks/CATIA/ANSYS, thermal systems, manufacturing processes), "
         "certifications, and achievements. Do NOT suggest campaigns, financial modeling, or design-specific fields."
+    ),
+    'accountant': (
+        "This is an ACCOUNTANT portfolio (accounting, audit, tax, bookkeeping). Focus suggestions on: "
+        "experience (description, key_points), engagements (description, responsibilities, deliverables, "
+        "measurable_outcomes — audits, close cycles, filings, reconciliations), skills (financial reporting, "
+        "taxation, audit, AP/AR, payroll), certifications (CPA/CA/ACCA/CMA), and achievements. "
+        "Do NOT suggest software projects, marketing campaigns, or design-specific fields."
+    ),
+    'hr': (
+        "This is a HUMAN RESOURCES portfolio. Focus suggestions on: experience (description, key_points), "
+        "hr_programs (description, activities, measurable_outcomes — hiring drives, onboarding, L&D, D&I, "
+        "engagement, HRIS rollouts), skills (talent acquisition, employee relations, comp & benefits, HR ops), "
+        "certifications (SHRM/PHR/CIPD), and achievements. Prefer people metrics such as time-to-hire, "
+        "attrition and offer acceptance. Do NOT suggest software projects, marketing campaigns, or "
+        "design-specific fields."
     ),
 }
 _CATEGORY_GUIDANCE_DEFAULT = (

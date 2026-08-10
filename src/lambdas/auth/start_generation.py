@@ -24,6 +24,8 @@ import os
 import boto3
 from datetime import datetime, timezone
 
+import entitlements as ent
+
 s3_client = boto3.client('s3')
 sqs_client = boto3.client('sqs')
 dynamodb = boto3.resource('dynamodb')
@@ -43,7 +45,7 @@ GUEST_EMAIL_DOMAIN = os.environ.get('GUEST_EMAIL_DOMAIN', 'guest.aifolio.interna
 # (see memory: adding a profession/template touches every backend allowlist).
 ALLOWED_CATEGORIES = {
     'software_engineer', 'designer', 'marketing', 'finance',
-    'civil_engineer', 'mechanical_engineer',
+    'civil_engineer', 'mechanical_engineer', 'accountant', 'hr',
 }
 # MUST stay in sync with the frontend TEMPLATE_META (templates/index.ts) and
 # upload/handler.py ALLOWED_TEMPLATES. This list previously lagged 28 templates
@@ -60,6 +62,8 @@ ALLOWED_TEMPLATES = {
     'structura', 'blueprint',
     'precision', 'torque',
     'ledger', 'sterling',
+    'meridian', 'cambria', 'verdant',
+    'haven', 'solace', 'quill', 'journal', 'atrium',
 }
 
 # Cap on the resume text embedded in the SQS message body. SQS has a hard
@@ -120,6 +124,8 @@ def lambda_handler(event, context):
         status = item.get('status', '')
 
         # Idempotency: a second call after generation already started is a no-op.
+        # Checked BEFORE the plan gates so a double click on "Generate" can never
+        # be rejected for a limit the first click legitimately consumed.
         if status in _ALREADY_STARTED:
             _log('INFO', 'Generation already started — no-op', correlationId=correlation_id,
                  userId=user_id, uploadId=upload_id, status=status)
@@ -129,6 +135,31 @@ def lambda_handler(event, context):
             return _response(409, {
                 'error': f'Upload is not ready for generation (status: {status})'
             })
+
+        # --- Plan gates -------------------------------------------------
+        # This is the authoritative commit point: past here the pipeline spends
+        # money on OpenAI. The presigned-URL Lambda applies the same two checks
+        # earlier for a friendlier failure, but a client can reach this endpoint
+        # directly, so both gates are re-applied here rather than trusted.
+        plan = ent.get_plan(user_id)
+
+        if not ent.template_allowed(plan, template_id):
+            _log('WARNING', 'Paid template rejected for plan',
+                 correlationId=correlation_id, userId=user_id,
+                 uploadId=upload_id, templateId=template_id, plan=plan)
+            return ent.template_limit_response(plan, template_id)
+
+        max_portfolios = ent.limits_for(plan).get('portfolios')
+        if max_portfolios is not None:
+            # Exclude THIS upload: it is itself in-flight (AWAITING_SELECTION),
+            # so counting it would reject a free user's very first portfolio.
+            used = ent.used_portfolio_slots(user_id, exclude_upload_id=upload_id)
+            if used >= max_portfolios:
+                _log('WARNING', 'Portfolio limit reached',
+                     correlationId=correlation_id, userId=user_id,
+                     uploadId=upload_id, plan=plan,
+                     limit=max_portfolios, used=used)
+                return ent.portfolio_limit_response(plan, used, max_portfolios)
 
         text_key = item.get('rawTextS3Key')
         if not text_key:

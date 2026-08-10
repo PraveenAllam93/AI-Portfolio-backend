@@ -346,3 +346,11 @@ output "profile_arn" {
 output "profile_invoke_arn" {
   value = aws_lambda_function.profile.invoke_arn
 }
+
+# Plan limits + daily usage (GET)
+output "get_entitlements_arn" {
+  value = aws_lambda_function.get_entitlements.arn
+}
+output "get_entitlements_invoke_arn" {
+  value = aws_lambda_function.get_entitlements.invoke_arn
+}

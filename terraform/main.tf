@@ -280,6 +280,10 @@ module "api_gateway" {
   profile_lambda_arn               = module.lambda.profile_arn
   profile_lambda_invoke_arn        = module.lambda.profile_invoke_arn
 
+  # Plan limits + daily usage
+  get_entitlements_lambda_arn        = module.lambda.get_entitlements_arn
+  get_entitlements_lambda_invoke_arn = module.lambda.get_entitlements_invoke_arn
+
   tags = local.common_tags
 }
 
@@ -444,8 +448,12 @@ resource "aws_s3_bucket_notification" "access_logs_notification" {
 # sign-up — making "account exists" and "username claimed" atomic.
 
 data "archive_file" "pre_signup" {
-  type        = "zip"
-  source_dir  = "${path.root}/../src/lambdas/auth"
+  type       = "zip"
+  source_dir = "${path.root}/../src/lambdas/auth"
+  # Without this, running python locally writes __pycache__ into the source dir
+  # and every archive hash changes, so terraform reports a redeploy for a
+  # function nobody edited. Matches the excludes on the lambda module's archives.
+  excludes    = ["__pycache__", "*.pyc"]
   output_path = "${path.root}/../dist/lambdas/pre_signup.zip"
 }
 

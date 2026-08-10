@@ -285,3 +285,14 @@ variable "profile_lambda_invoke_arn" {
   description = "Invoke ARN of the profile read/edit Lambda"
   type        = string
 }
+
+# Plan limits + daily usage (GET)
+variable "get_entitlements_lambda_arn" {
+  description = "ARN of the entitlements (plan limits + usage) Lambda"
+  type        = string
+}
+
+variable "get_entitlements_lambda_invoke_arn" {
+  description = "Invoke ARN of the entitlements (plan limits + usage) Lambda"
+  type        = string
+}

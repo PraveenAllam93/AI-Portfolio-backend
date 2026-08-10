@@ -91,7 +91,9 @@ resource "aws_iam_role_policy" "get_presigned_url_dynamodb" {
     Statement = [{
       Sid    = "WriteUploadRecord"
       Effect = "Allow"
-      Action = ["dynamodb:PutItem", "dynamodb:Query"]
+      # GetItem: reads the caller's PROFILE record to resolve their plan before
+      # applying the portfolio and template limits (entitlements.get_plan).
+      Action = ["dynamodb:PutItem", "dynamodb:Query", "dynamodb:GetItem"]
       Resource = [
         var.dynamodb_table_arn,
         "${var.dynamodb_table_arn}/index/*",
@@ -407,6 +409,7 @@ resource "aws_iam_role_policy" "api_read_dynamodb" {
 data "archive_file" "get_presigned_url" {
   type        = "zip"
   source_dir  = "${path.module}/../../../src/lambdas/upload"
+  excludes    = ["__pycache__", "*.pyc"]
   output_path = "${path.module}/../../../dist/lambdas/get_presigned_url.zip"
 }
 
@@ -448,6 +451,7 @@ resource "aws_lambda_function" "get_presigned_url" {
 data "archive_file" "quarantine_validator" {
   type        = "zip"
   source_dir  = "${path.module}/../../../src/lambdas/validation"
+  excludes    = ["__pycache__", "*.pyc"]
   output_path = "${path.module}/../../../dist/lambdas/quarantine_validator.zip"
 }
 
@@ -500,6 +504,7 @@ resource "aws_lambda_permission" "quarantine_s3_trigger" {
 data "archive_file" "pdf_processing_layer" {
   type        = "zip"
   source_dir  = "${path.module}/../../../src/layers/pdf_processing"
+  excludes    = ["__pycache__", "*.pyc"]
   output_path = "${path.module}/../../../dist/layers/pdf_processing.zip"
 }
 
@@ -518,6 +523,7 @@ resource "aws_lambda_layer_version" "pdf_processing" {
 data "archive_file" "resume_ingestion" {
   type        = "zip"
   source_dir  = "${path.module}/../../../src/lambdas/ingestion"
+  excludes    = ["__pycache__", "*.pyc"]
   output_path = "${path.module}/../../../dist/lambdas/resume_ingestion.zip"
 }
 
@@ -593,6 +599,7 @@ resource "aws_iam_role_policy" "classify_profession_secrets" {
 data "archive_file" "classify_profession" {
   type        = "zip"
   source_dir  = "${path.module}/../../../src/lambdas/classify_profession"
+  excludes    = ["__pycache__", "*.pyc"]
   output_path = "${path.module}/../../../dist/lambdas/classify_profession.zip"
 }
 
@@ -628,6 +635,7 @@ resource "aws_lambda_function" "classify_profession" {
 data "archive_file" "ai_processing" {
   type        = "zip"
   source_dir  = "${path.module}/../../../src/lambdas/ai_processing"
+  excludes    = ["__pycache__", "*.pyc"]
   output_path = "${path.module}/../../../dist/lambdas/ai_processing.zip"
 }
 
@@ -744,6 +752,7 @@ resource "aws_lambda_function" "portfolio_generator" {
 data "archive_file" "get_portfolio" {
   type        = "zip"
   source_dir  = "${path.module}/../../../src/lambdas/auth"
+  excludes    = ["__pycache__", "*.pyc"]
   output_path = "${path.module}/../../../dist/lambdas/get_portfolio.zip"
 }
 
@@ -828,10 +837,15 @@ resource "aws_iam_role_policy" "start_generation_dynamodb" {
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [{
-      Sid      = "ReadUpdateOwnUpload"
-      Effect   = "Allow"
-      Action   = ["dynamodb:GetItem", "dynamodb:UpdateItem"]
-      Resource = var.dynamodb_table_arn
+      Sid    = "ReadUpdateOwnUpload"
+      Effect = "Allow"
+      # Query: entitlements.used_portfolio_slots() scans the caller's own
+      # PORTFOLIO# and UPLOAD# records to count how many plan slots are taken.
+      Action = ["dynamodb:GetItem", "dynamodb:UpdateItem", "dynamodb:Query"]
+      Resource = [
+        var.dynamodb_table_arn,
+        "${var.dynamodb_table_arn}/index/*",
+      ]
       Condition = {
         "ForAllValues:StringLike" = {
           "dynamodb:LeadingKeys" = ["USER#*"]
@@ -949,6 +963,7 @@ resource "aws_iam_role_policy" "process_access_logs_dynamodb" {
 data "archive_file" "process_access_logs" {
   type        = "zip"
   source_dir  = "${path.module}/../../../src/lambdas/process_access_logs"
+  excludes    = ["__pycache__", "*.pyc"]
   output_path = "${path.module}/../../../dist/lambdas/process_access_logs.zip"
 }
 
@@ -1008,21 +1023,39 @@ resource "aws_iam_role_policy" "analytics_dynamodb" {
   role = aws_iam_role.analytics.id
   policy = jsonencode({
     Version = "2012-10-17"
-    Statement = [{
-      Sid    = "QueryViewEvents"
-      Effect = "Allow"
-      Action = ["dynamodb:Query"]
-      Resource = [
-        var.dynamodb_table_arn,
-        "${var.dynamodb_table_arn}/index/*",
-      ]
-      # Belt-and-suspenders: restrict to PORTFOLIO#* partition keys even at IAM level.
-      Condition = {
-        "ForAllValues:StringLike" = {
-          "dynamodb:LeadingKeys" = ["PORTFOLIO#*"]
+    Statement = [
+      {
+        Sid    = "QueryViewEvents"
+        Effect = "Allow"
+        Action = ["dynamodb:Query"]
+        Resource = [
+          var.dynamodb_table_arn,
+          "${var.dynamodb_table_arn}/index/*",
+        ]
+        # Belt-and-suspenders: restrict to PORTFOLIO#* partition keys even at IAM level.
+        Condition = {
+          "ForAllValues:StringLike" = {
+            "dynamodb:LeadingKeys" = ["PORTFOLIO#*"]
+          }
         }
-      }
-    }]
+      },
+      {
+        # Separate statement because the one above is deliberately pinned to
+        # PORTFOLIO#* keys, while the plan check reads USER#{sub} / PROFILE.
+        # Folding it into that condition would have denied the profile read, and
+        # entitlements.get_plan swallows errors and returns "free" — so analytics
+        # would have quietly 402'd for PAYING users with no obvious cause.
+        Sid      = "ReadOwnPlan"
+        Effect   = "Allow"
+        Action   = ["dynamodb:GetItem"]
+        Resource = var.dynamodb_table_arn
+        Condition = {
+          "ForAllValues:StringLike" = {
+            "dynamodb:LeadingKeys" = ["USER#*"]
+          }
+        }
+      },
+    ]
   })
 }
 
@@ -1077,9 +1110,13 @@ resource "aws_iam_role_policy" "portfolio_edit_dynamodb" {
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [{
-      Sid      = "UpdatePortfolioContent"
-      Effect   = "Allow"
-      Action   = ["dynamodb:UpdateItem"]
+      Sid    = "UpdatePortfolioContent"
+      Effect = "Allow"
+      # Shared by patch_portfolio and publish_portfolio.
+      # GetItem: reads the caller's PROFILE to resolve their plan — patch needs
+      # it to gate template switches, publish to meter publishes/day.
+      # UpdateItem already covers the publish counter.
+      Action   = ["dynamodb:UpdateItem", "dynamodb:GetItem"]
       Resource = var.dynamodb_table_arn
       Condition = {
         "ForAllValues:StringLike" = {
@@ -1188,9 +1225,13 @@ resource "aws_iam_role_policy" "ai_enhance_dynamodb" {
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [{
-      Sid      = "ReadPortfolioContent"
-      Effect   = "Allow"
-      Action   = ["dynamodb:GetItem"]
+      Sid    = "ReadPortfolioContent"
+      Effect = "Allow"
+      # UpdateItem: the daily AI counters (QUOTA#{day}#ai_analyze /
+      # #ai_enhance) are consumed and refunded here. Without it every AI call
+      # fails closed, because entitlements.consume_daily denies on error rather
+      # than risk an unmetered OpenAI endpoint.
+      Action   = ["dynamodb:GetItem", "dynamodb:UpdateItem"]
       Resource = var.dynamodb_table_arn
       Condition = {
         "ForAllValues:StringLike" = {
@@ -1513,6 +1554,7 @@ resource "aws_iam_role_policy" "interview_secrets" {
 data "archive_file" "interview" {
   type        = "zip"
   source_dir  = "${path.module}/../../../src/lambdas/interview"
+  excludes    = ["__pycache__", "*.pyc"]
   output_path = "${path.module}/../../../dist/lambdas/interview.zip"
 }
 
@@ -2349,6 +2391,7 @@ resource "aws_iam_role_policy" "guest_reaper_s3" {
 data "archive_file" "guest_reaper" {
   type        = "zip"
   source_dir  = "${path.module}/../../../src/lambdas/guest_reaper"
+  excludes    = ["__pycache__", "*.pyc"]
   output_path = "${path.module}/../../../dist/lambdas/guest_reaper.zip"
 }
 
@@ -2581,5 +2624,82 @@ resource "aws_lambda_function" "profile" {
     # AWS tag values allow only [letters numbers whitespace _ . : / = + - @].
     # Apostrophes, parentheses and commas fail CreateFunction.
     Function = "Read and edit the callers own profile - username and display name"
+  })
+}
+
+# =============================================================================
+# ENTITLEMENTS LAMBDA (GET /entitlements)
+# =============================================================================
+# Advisory read of the caller's plan, its limits and today's usage, so the
+# frontend can render locks, star badges and credit counters without hardcoding
+# any number. Enforcement lives in each acting Lambda, never here.
+#
+# No userId in the path: the Lambda derives the caller from the token's sub
+# claim, so there is nothing to tamper with.
+# =============================================================================
+
+resource "aws_iam_role" "entitlements" {
+  name               = "${var.name_prefix}-entitlements-role"
+  assume_role_policy = data.aws_iam_policy_document.lambda_assume_role.json
+  tags               = var.tags
+}
+
+resource "aws_iam_role_policy" "entitlements_logs" {
+  name   = "cloudwatch-logs"
+  role   = aws_iam_role.entitlements.id
+  policy = data.aws_iam_policy_document.cloudwatch_logs.json
+}
+
+resource "aws_iam_role_policy" "entitlements_dynamodb" {
+  name = "dynamodb-read-plan-and-usage"
+  role = aws_iam_role.entitlements.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      # Read-only by design: this endpoint REPORTS entitlements, it never grants
+      # or consumes them. GetItem reads PROFILE (the plan); Query reads today's
+      # QUOTA# counters plus the PORTFOLIO#/UPLOAD# records used to count
+      # portfolio slots. All scoped to the caller's own partition.
+      Sid    = "ReadOwnPlanAndUsage"
+      Effect = "Allow"
+      Action = ["dynamodb:GetItem", "dynamodb:Query"]
+      Resource = [
+        var.dynamodb_table_arn,
+        "${var.dynamodb_table_arn}/index/*",
+      ]
+      Condition = {
+        "ForAllValues:StringLike" = {
+          "dynamodb:LeadingKeys" = ["USER#*"]
+        }
+      }
+    }]
+  })
+}
+
+resource "aws_lambda_function" "get_entitlements" {
+  # Bundled in the same auth/ zip — handler file is get_entitlements.py
+  filename         = data.archive_file.get_portfolio.output_path
+  function_name    = "${var.name_prefix}-get-entitlements"
+  role             = aws_iam_role.entitlements.arn
+  handler          = "get_entitlements.lambda_handler"
+  source_code_hash = data.archive_file.get_portfolio.output_base64sha256
+  runtime          = "python3.12"
+  timeout          = var.timeout
+  memory_size      = var.memory_size
+
+  reserved_concurrent_executions = var.reserved_concurrency
+
+  environment {
+    variables = {
+      DYNAMODB_TABLE = var.dynamodb_table_name
+      ALLOWED_ORIGIN = var.allowed_origin
+      ENVIRONMENT    = var.environment
+    }
+  }
+
+  tags = merge(var.tags, {
+    Name = "${var.name_prefix}-get-entitlements"
+    # AWS tag values allow only [letters numbers whitespace _ . : / = + - @].
+    Function = "Read the callers plan limits and daily usage"
   })
 }

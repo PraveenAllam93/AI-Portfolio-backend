@@ -32,6 +32,8 @@ from urllib.parse import unquote
 import boto3
 from boto3.dynamodb.conditions import Key
 
+import entitlements as ent
+
 dynamodb = boto3.resource('dynamodb')
 
 DYNAMODB_TABLE = os.environ.get('DYNAMODB_TABLE')
@@ -94,6 +96,26 @@ def lambda_handler(event, context):
              pathUserId=path_user_id[:8] if path_user_id else '',
              tokenSub=token_sub[:8] if token_sub else '')
         return _response(403, {'error': 'Forbidden'})
+
+    # Recruiter analytics is a paid feature. View records are still COLLECTED
+    # for free users — only reading them is gated — so upgrading surfaces the
+    # history that accumulated while they were on the free plan, rather than
+    # starting from zero.
+    plan = ent.get_plan(token_sub)
+    if not ent.limits_for(plan).get('analytics'):
+        _log('INFO', 'Analytics blocked for plan',
+             correlationId=correlation_id, userId=path_user_id, plan=plan)
+        return ent.limit_response(
+            {
+                'name': 'analytics',
+                'label': 'recruiter analytics',
+                'plan': plan,
+                'limit': 0,
+                'used': 0,
+                'resetsAt': None,
+            },
+            'Recruiter analytics is available on the paid plan.',
+        )
 
     try:
         table = dynamodb.Table(DYNAMODB_TABLE)

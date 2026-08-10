@@ -12,9 +12,10 @@ and uploads it to the portfolio S3 bucket under {userId}/assets/{uuid}.jpg.
 Returns the CloudFront URL — does NOT auto-save; the frontend adds the URL
 to the item's images array only after the user explicitly accepts it.
 
-Rate limit: DAILY_GENERATION_LIMIT (default 10) generations per user per
-calendar day (UTC), enforced atomically via a DynamoDB counter item:
-  PK: USER#{userId}, SK: IMAGE_GEN#{YYYY-MM-DD}
+Rate limit: per-plan generations per user per calendar day (UTC) — see
+entitlements.PLANS['<plan>']['project_images_per_day'] — enforced atomically via
+a shared DynamoDB counter item:
+  PK: USER#{userId}, SK: QUOTA#{YYYY-MM-DD}#project_image
 
 Security notes:
 - userId in path MUST match the Cognito token sub.
@@ -36,6 +37,8 @@ from urllib.parse import unquote
 
 import boto3
 
+import entitlements as ent
+
 dynamodb = boto3.resource('dynamodb')
 s3_client = boto3.client('s3')
 secrets_client = boto3.client('secretsmanager')
@@ -45,9 +48,11 @@ PORTFOLIO_BUCKET = os.environ.get('PORTFOLIO_BUCKET')
 CLOUDFRONT_DOMAIN = os.environ.get('CLOUDFRONT_DOMAIN')
 OPENAI_SECRET_NAME = os.environ.get('OPENAI_SECRET_NAME')
 ALLOWED_ORIGIN = os.environ.get('ALLOWED_ORIGIN', '*')
-DAILY_GENERATION_LIMIT = int(os.environ.get('DAILY_GENERATION_LIMIT', '10'))
 
-_ALLOWED_SECTIONS = {'projects', 'experience'}
+# Sections whose items carry an `images` field. MUST match every section the
+# edit page renders an `inputType: 'images'` control for — that control always
+# shows the "✦ Generate" button, so a section missing here 400s on click.
+_ALLOWED_SECTIONS = {'projects', 'experience', 'campaigns', 'engagements', 'hr_programs'}
 MAX_ITEM_IMAGES = 3
 
 _openai_api_key = None
@@ -89,38 +94,6 @@ def _get_openai_key() -> str:
     return _openai_api_key
 
 
-def _check_and_increment_rate_limit(user_id: str) -> bool:
-    """
-    Atomically increment today's generation counter.
-    Returns True if under the limit (proceed), False if limit exceeded.
-    Uses ConditionExpression so the check + increment are atomic.
-    """
-    today = datetime.now(timezone.utc).strftime('%Y-%m-%d')
-    # TTL: expire the counter record at end of day UTC
-    end_of_day = datetime.now(timezone.utc).replace(hour=23, minute=59, second=59)
-    expire_ts = int(end_of_day.timestamp()) + 1
-
-    table = dynamodb.Table(DYNAMODB_TABLE)
-    try:
-        table.update_item(
-            Key={'PK': f'USER#{user_id}', 'SK': f'IMAGE_GEN#{today}'},
-            UpdateExpression='ADD #count :one SET #ttl = if_not_exists(#ttl, :expire)',
-            ConditionExpression='attribute_not_exists(#count) OR #count < :limit',
-            ExpressionAttributeNames={
-                '#count': 'count',
-                '#ttl': 'ttl',
-            },
-            ExpressionAttributeValues={
-                ':one': 1,
-                ':limit': DAILY_GENERATION_LIMIT,
-                ':expire': expire_ts,
-            },
-        )
-        return True
-    except dynamodb.meta.client.exceptions.ConditionalCheckFailedException:
-        return False
-
-
 # ---------------------------------------------------------------------------
 # Prompt builder
 # ---------------------------------------------------------------------------
@@ -145,6 +118,30 @@ _CATEGORY_STYLES = {
         "a clean, professional data visualization for a finance portfolio. "
         "Style: corporate and precise — abstract chart art, financial data "
         "visualization, or sophisticated geometric composition."
+    ),
+    'civil_engineer': (
+        "a precise, technical visual for a civil engineering portfolio. "
+        "Style: structural draughting aesthetic — blueprint-like elevation, "
+        "load-path or truss geometry, or an abstract infrastructure composition "
+        "(bridge, span, foundation). Measured and engineered, never decorative."
+    ),
+    'mechanical_engineer': (
+        "a precise, technical visual for a mechanical engineering portfolio. "
+        "Style: CAD-inspired — exploded assembly view, machined-component "
+        "cross-section, or clean isometric part geometry. Crisp tolerances and "
+        "engineered surfaces, never decorative."
+    ),
+    'accountant': (
+        "a clean, professional visual for an accounting portfolio. "
+        "Style: precise and orderly — abstract ledger/spreadsheet geometry, "
+        "audit-document composition, or restrained financial-report art. "
+        "Trustworthy and understated, never flashy."
+    ),
+    'hr': (
+        "a warm, human-centred visual for a human resources portfolio. "
+        "Style: abstract people-and-teams composition — connected figures, "
+        "org-chart geometry, or workplace-collaboration imagery. "
+        "Approachable and professional, never corporate-stock-photo cliché."
     ),
 }
 
@@ -176,6 +173,34 @@ def _build_image_prompt(item: dict, section: str, category: str, template_id: st
             content_parts.append(f"Role: {item['role']}")
         if item.get('company'):
             content_parts.append(f"Company: {item['company']}")
+        if item.get('description'):
+            content_parts.append(f"Description: {str(item['description'])[:300]}")
+    elif section == 'campaigns':
+        if item.get('campaign_name'):
+            content_parts.append(f"Campaign: {item['campaign_name']}")
+        if item.get('campaign_type'):
+            content_parts.append(f"Type: {item['campaign_type']}")
+        channels = item.get('channels_used')
+        if isinstance(channels, list) and channels:
+            content_parts.append(f"Channels: {', '.join(str(c) for c in channels[:6])}")
+        if item.get('challenge'):
+            content_parts.append(f"Challenge: {str(item['challenge'])[:300]}")
+    elif section == 'engagements':
+        if item.get('client_name'):
+            content_parts.append(f"Client: {item['client_name']}")
+        if item.get('engagement_type'):
+            content_parts.append(f"Engagement: {item['engagement_type']}")
+        if item.get('industry'):
+            content_parts.append(f"Industry: {item['industry']}")
+        if item.get('description'):
+            content_parts.append(f"Description: {str(item['description'])[:300]}")
+    elif section == 'hr_programs':
+        if item.get('program_name'):
+            content_parts.append(f"Programme: {item['program_name']}")
+        if item.get('program_type'):
+            content_parts.append(f"Type: {item['program_type']}")
+        if item.get('scope'):
+            content_parts.append(f"Scope: {item['scope']}")
         if item.get('description'):
             content_parts.append(f"Description: {str(item['description'])[:300]}")
 
@@ -301,14 +326,6 @@ def lambda_handler(event, context):
     if not isinstance(item_idx, int) or item_idx < 0:
         return _response(400, {'error': 'itemIdx must be a non-negative integer'})
 
-    # Rate limit check (atomic — does not decrement on failure)
-    if not _check_and_increment_rate_limit(path_user_id):
-        _log('WARNING', 'Daily generation limit reached',
-             correlationId=correlation_id, userId=path_user_id)
-        return _response(429, {
-            'error': f'Daily image generation limit of {DAILY_GENERATION_LIMIT} reached. Try again tomorrow.'
-        })
-
     # Fetch portfolio record for category/templateId (always needed for style).
     # If itemData is provided in the request we skip parsing parsedData.
     try:
@@ -351,6 +368,21 @@ def lambda_handler(event, context):
             'error': f'This item already has the maximum of {MAX_ITEM_IMAGES} images'
         })
 
+    # Plan-aware daily limit (atomic check-and-increment). Replaces the former
+    # flat DAILY_GENERATION_LIMIT, which gave every user the same allowance.
+    #
+    # Deliberately metered HERE rather than at the top of the handler: every
+    # validation above (missing portfolio, bad index, item already at
+    # MAX_ITEM_IMAGES) returns without spending anything, and on the free plan a
+    # single generation IS the whole daily allowance — burning it on a 400 would
+    # be indistinguishable from theft.
+    plan = ent.get_plan(path_user_id)
+    allowed, limit_info = ent.consume_daily(path_user_id, plan, ent.ACTION_PROJECT_IMAGE)
+    if not allowed:
+        _log('INFO', 'Daily generation limit reached',
+             correlationId=correlation_id, userId=path_user_id, plan=plan)
+        return ent.limit_response(limit_info, ent.daily_limit_message(limit_info))
+
     try:
         api_key = _get_openai_key()
         prompt = _build_image_prompt(item, section_key, category, template_id)
@@ -379,4 +411,7 @@ def lambda_handler(event, context):
              correlationId=correlation_id,
              userId=path_user_id,
              error=str(e))
+        # Nothing usable was produced — hand the credit back rather than leaving
+        # a free user with no generations for the rest of the day.
+        ent.refund_daily(path_user_id, ent.ACTION_PROJECT_IMAGE)
         return _response(500, {'error': 'Image generation failed. Please try again.'})

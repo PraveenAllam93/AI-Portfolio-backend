@@ -64,6 +64,8 @@ _MERGEABLE_SECTIONS = {
     'campaigns': 'campaign_name, campaign_type, channels_used[], budget, performance_metrics[]',
     'financial_modeling': 'model_type, tools_used[], outcome',
     'investment_portfolios': 'portfolio_type, assets_under_management, performance_return',
+    'engagements': 'client_name, engagement_type, industry, start_date, end_date, description, responsibilities[], deliverables[], standards_applied[], tools_used[], engagement_value, measurable_outcomes[]',
+    'hr_programs': 'program_name, program_type, organization, start_date, end_date, description, scope, activities[], tools_used[], measurable_outcomes[]',
     'skills': 'category, skills[]',
 }
 

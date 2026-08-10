@@ -1809,9 +1809,12 @@ resource "aws_api_gateway_deployment" "main" {
       aws_api_gateway_resource.username.id,
       aws_api_gateway_resource.username_check.id,
       aws_api_gateway_resource.profile.id,
+      aws_api_gateway_resource.entitlements.id,
       aws_api_gateway_method.get_username_check.id,
       aws_api_gateway_method.get_profile.id,
       aws_api_gateway_method.patch_profile.id,
+      aws_api_gateway_method.get_entitlements.id,
+      aws_api_gateway_integration.get_entitlements.id,
       aws_api_gateway_method.post_presigned_url.id,
       aws_api_gateway_method.get_status.id,
       aws_api_gateway_method.list_portfolios.id,
@@ -1918,6 +1921,8 @@ resource "aws_api_gateway_deployment" "main" {
     aws_api_gateway_integration.get_profile,
     aws_api_gateway_integration.patch_profile,
     aws_api_gateway_integration.options_profile,
+    aws_api_gateway_integration.get_entitlements,
+    aws_api_gateway_integration.options_entitlements,
   ]
 
 }
@@ -2155,6 +2160,84 @@ resource "aws_api_gateway_integration_response" "options_profile" {
   response_parameters = {
     "method.response.header.Access-Control-Allow-Headers" = "'Content-Type,Authorization'"
     "method.response.header.Access-Control-Allow-Methods" = "'GET,PATCH,OPTIONS'"
+    "method.response.header.Access-Control-Allow-Origin"  = "'*'"
+  }
+}
+
+# =============================================================================
+# /entitlements — GET (Cognito authenticated)
+# =============================================================================
+# Reports the caller's plan limits and today's usage so the UI can render locks
+# and credit counters. Like /profile there is no userId in the path: the Lambda
+# reads the token's sub claim, so a caller can only ever see their own.
+# =============================================================================
+
+resource "aws_api_gateway_resource" "entitlements" {
+  rest_api_id = aws_api_gateway_rest_api.main.id
+  parent_id   = aws_api_gateway_rest_api.main.root_resource_id
+  path_part   = "entitlements"
+}
+
+resource "aws_api_gateway_method" "get_entitlements" {
+  rest_api_id   = aws_api_gateway_rest_api.main.id
+  resource_id   = aws_api_gateway_resource.entitlements.id
+  http_method   = "GET"
+  authorization = "COGNITO_USER_POOLS"
+  authorizer_id = aws_api_gateway_authorizer.cognito.id
+}
+
+resource "aws_api_gateway_integration" "get_entitlements" {
+  rest_api_id             = aws_api_gateway_rest_api.main.id
+  resource_id             = aws_api_gateway_resource.entitlements.id
+  http_method             = aws_api_gateway_method.get_entitlements.http_method
+  integration_http_method = "POST"
+  type                    = "AWS_PROXY"
+  uri                     = var.get_entitlements_lambda_invoke_arn
+}
+
+resource "aws_lambda_permission" "api_entitlements" {
+  statement_id  = "AllowAPIGatewayInvoke"
+  action        = "lambda:InvokeFunction"
+  function_name = var.get_entitlements_lambda_arn
+  principal     = "apigateway.amazonaws.com"
+  source_arn    = "${aws_api_gateway_rest_api.main.execution_arn}/*/*"
+}
+
+resource "aws_api_gateway_method" "options_entitlements" {
+  rest_api_id   = aws_api_gateway_rest_api.main.id
+  resource_id   = aws_api_gateway_resource.entitlements.id
+  http_method   = "OPTIONS"
+  authorization = "NONE"
+}
+
+resource "aws_api_gateway_integration" "options_entitlements" {
+  rest_api_id       = aws_api_gateway_rest_api.main.id
+  resource_id       = aws_api_gateway_resource.entitlements.id
+  http_method       = aws_api_gateway_method.options_entitlements.http_method
+  type              = "MOCK"
+  request_templates = { "application/json" = "{\"statusCode\": 200}" }
+}
+
+resource "aws_api_gateway_method_response" "options_entitlements" {
+  rest_api_id = aws_api_gateway_rest_api.main.id
+  resource_id = aws_api_gateway_resource.entitlements.id
+  http_method = aws_api_gateway_method.options_entitlements.http_method
+  status_code = "200"
+  response_parameters = {
+    "method.response.header.Access-Control-Allow-Headers" = true
+    "method.response.header.Access-Control-Allow-Methods" = true
+    "method.response.header.Access-Control-Allow-Origin"  = true
+  }
+}
+
+resource "aws_api_gateway_integration_response" "options_entitlements" {
+  rest_api_id = aws_api_gateway_rest_api.main.id
+  resource_id = aws_api_gateway_resource.entitlements.id
+  http_method = aws_api_gateway_method.options_entitlements.http_method
+  status_code = aws_api_gateway_method_response.options_entitlements.status_code
+  response_parameters = {
+    "method.response.header.Access-Control-Allow-Headers" = "'Content-Type,Authorization'"
+    "method.response.header.Access-Control-Allow-Methods" = "'GET,OPTIONS'"
     "method.response.header.Access-Control-Allow-Origin"  = "'*'"
   }
 }

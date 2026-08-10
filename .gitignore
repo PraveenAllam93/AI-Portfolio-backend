@@ -263,3 +263,7 @@ dist/
 
 # Windows Zone.Identifier alternate-data-stream junk (WSL/SMB)
 *Zone.Identifier
+
+# Raw design HTML dropped in while building a new portfolio template. Source
+# material for the add-portfolio-template workflow, not a build input.
+templates_add/

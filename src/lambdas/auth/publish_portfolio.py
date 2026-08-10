@@ -20,6 +20,8 @@ from urllib.parse import unquote
 
 import boto3
 
+import entitlements as ent
+
 lambda_client = boto3.client('lambda')
 
 PORTFOLIO_LAMBDA_NAME = os.environ.get('PORTFOLIO_LAMBDA_NAME')
@@ -88,6 +90,19 @@ def lambda_handler(event, context):
         _log('ERROR', 'PORTFOLIO_LAMBDA_NAME not configured', correlationId=correlation_id)
         return _response(500, {'error': 'Internal server error'})
 
+    # Metered: each publish bumps the version, renders a fresh snapshot to S3 and
+    # writes an immutable VERSION# record. Consumed before the invoke and
+    # refunded below if the generator never produced anything.
+    #
+    # Rollback (activate_version) is intentionally NOT metered — restoring a
+    # version the user already published is recovery, not a new publish.
+    plan = ent.get_plan(token_sub)
+    allowed, limit_info = ent.consume_daily(token_sub, plan, ent.ACTION_PUBLISH)
+    if not allowed:
+        _log('INFO', 'Publish daily limit reached',
+             correlationId=correlation_id, userId=path_user_id, plan=plan)
+        return ent.limit_response(limit_info, ent.daily_limit_message(limit_info))
+
     try:
         resp = lambda_client.invoke(
             FunctionName=PORTFOLIO_LAMBDA_NAME,
@@ -105,6 +120,7 @@ def lambda_handler(event, context):
                  correlationId=correlation_id,
                  userId=path_user_id,
                  functionError=resp['FunctionError'])
+            ent.refund_daily(token_sub, ent.ACTION_PUBLISH)
             return _response(500, {'error': 'Portfolio generation failed'})
 
         _log('INFO', 'Portfolio published',
@@ -121,4 +137,5 @@ def lambda_handler(event, context):
              correlationId=correlation_id,
              userId=path_user_id,
              error=str(e))
+        ent.refund_daily(token_sub, ent.ACTION_PUBLISH)
         return _response(500, {'error': 'Internal server error'})
