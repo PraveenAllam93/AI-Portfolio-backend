@@ -84,6 +84,7 @@ _SECTION_ITEM_FIELDS: dict = {
     'financial_modeling': ['outcome'],
     'engagements':        ['description', 'responsibilities', 'deliverables', 'measurable_outcomes'],
     'hr_programs':        ['description', 'activities', 'measurable_outcomes'],
+    'deals':              ['description', 'responsibilities', 'measurable_outcomes'],
 }
 
 # Shape C: context sections per category for skills enhancement
@@ -96,6 +97,7 @@ _SKILLS_CONTEXT_SECTIONS: dict = {
     'mechanical_engineer':  ['experience', 'projects', 'certifications'],
     'accountant':        ['experience', 'engagements', 'certifications'],
     'hr':                ['experience', 'hr_programs', 'certifications'],
+    'sales':             ['experience', 'deals', 'certifications'],
 }
 _SKILLS_CONTEXT_DEFAULT = ['experience', 'certifications']
 
@@ -649,6 +651,7 @@ _ENHANCEABLE_FIELDS = {
     'financial_modeling': ['outcome'],
     'engagements':        ['description', 'responsibilities', 'deliverables', 'measurable_outcomes'],
     'hr_programs':        ['description', 'activities', 'measurable_outcomes'],
+    'deals':              ['description', 'responsibilities', 'measurable_outcomes'],
     # profile and skills are handled separately
 }
 
@@ -656,7 +659,7 @@ _SUGGESTIONS_SCHEMA = (
     'Return a JSON array of suggestion objects. Each object must have these exact keys:\n'
     '  "id": unique string formatted as "<section>-<index>-<field>", e.g. "experience-0-key_points"\n'
     '  "section": one of "profile", "experience", "projects", "skills", "achievements", "campaigns", '
-    '"financial_modeling", "engagements", "hr_programs"\n'
+    '"financial_modeling", "engagements", "hr_programs", "deals"\n'
     '  "index": integer 0-based index within the section array. Omit (or null) only for profile and skills.\n'
     '  "field": MUST be one of the allowed fields below for each section — do not invent other field names:\n'
     '    - experience  → "description" or "key_points"\n'
@@ -666,6 +669,7 @@ _SUGGESTIONS_SCHEMA = (
     '    - financial_modeling → "outcome"\n'
     '    - engagements → "description", "responsibilities", "deliverables", or "measurable_outcomes"\n'
     '    - hr_programs → "description", "activities", or "measurable_outcomes"\n'
+    '    - deals       → "description", "responsibilities", or "measurable_outcomes"\n'
     '    - profile     → omit "field"; use "profileKey" instead\n'
     '    - skills      → omit "field" and "index"\n'
     '  "profileKey": for profile section ONLY — must be one of "bio", "headline", "uniqueValue"\n'
@@ -913,6 +917,16 @@ _CATEGORY_GUIDANCE = {
         "engagement, HRIS rollouts), skills (talent acquisition, employee relations, comp & benefits, HR ops), "
         "certifications (SHRM/PHR/CIPD), and achievements. Prefer people metrics such as time-to-hire, "
         "attrition and offer acceptance. Do NOT suggest software projects, marketing campaigns, or "
+        "design-specific fields."
+    ),
+    'sales': (
+        "This is a SALES portfolio (quota-carrying selling, account management, business development). "
+        "Focus suggestions on: experience (description, key_points), deals (description, responsibilities, "
+        "measurable_outcomes — named accounts, closed business, renewals and expansions), skills "
+        "(prospecting, discovery, negotiation, pipeline management, account growth), certifications "
+        "(Salesforce/HubSpot/MEDDIC/Challenger/Sandler), and achievements (President's Club, rankings). "
+        "Prefer commercial metrics such as quota attainment, revenue closed, ARR, deal size, win rate "
+        "and net revenue retention. Do NOT suggest software projects, marketing campaigns, or "
         "design-specific fields."
     ),
 }

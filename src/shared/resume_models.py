@@ -14,6 +14,7 @@ Supported categories (must match ALLOWED_CATEGORIES):
     - mechanical_engineer
     - accountant
     - hr
+    - sales
 
 Every top-level field added here must ALSO be threaded through the frontend
 (ParsedData type, base.ts normalize(), the edit page SECTION_CONFIG and at
@@ -32,7 +33,8 @@ ALLOWED_CATEGORIES = {
     'civil_engineer',
     'mechanical_engineer',
     'accountant',
-    'hr'
+    'hr',
+    'sales'
 }
 
 
@@ -985,6 +987,111 @@ class HRModel(BaseModel):
     )
 
 
+# =====================================================
+# SALES
+# =====================================================
+
+
+class SalesDeal(BaseModel):
+    """One deal, named account or client win.
+
+    The sales analogue of marketing's `campaigns` — quota-carrying reps list the
+    deals they closed, account managers list the book of business they own, and
+    channel/BD sellers list the partnerships they built.
+    """
+
+    client_name: Optional[str] = Field(
+        description="Client, account or prospect company the deal was won with. Use a generic label such as 'Confidential Client — Fortune 500 Retailer' when the account cannot be named"
+    )
+    deal_type: Optional[str] = Field(
+        description="Type of deal such as New Business, Renewal, Upsell, Expansion, Cross-Sell, Enterprise, SMB, Channel/Partner, RFP/Tender, Win-Back"
+    )
+    industry: Optional[str] = Field(
+        description="Industry or vertical of the account such as SaaS, BFSI, Manufacturing, Healthcare, Retail, Telecom"
+    )
+    start_date: Optional[str] = Field(
+        description="Date the opportunity opened in YYYY-MM format")
+    end_date: Optional[str] = Field(
+        description="Date the deal closed in YYYY-MM format, or null if the account is still owned")
+    description: Optional[str] = Field(
+        description="What the customer needed and what was sold to them")
+    products_sold: Optional[List[str]] = Field(
+        description="Products, services or solution lines sold on this deal"
+    )
+    deal_value: Optional[str] = Field(
+        description="Commercial size of the deal such as ARR, TCV, contract value or annual revenue of the account"
+    )
+    sales_cycle_length: Optional[str] = Field(
+        description="How long the deal took to close such as '6 months' or '3 weeks'"
+    )
+    stakeholders_engaged: Optional[List[str]] = Field(
+        description="Buying-committee roles sold to such as CFO, CTO, VP Engineering, Head of Procurement, Legal"
+    )
+    responsibilities: Optional[List[str]] = Field(
+        description="Selling activities owned such as prospecting, discovery, solution demo, POC, pricing negotiation, contract close, onboarding handover"
+    )
+    measurable_outcomes: Optional[List[str]] = Field(
+        description="Quantified results such as 'closed $1.2M ARR', 'grew the account 3x in 18 months', 'displaced the incumbent vendor', 'renewed at 120% net revenue retention'"
+    )
+    images: Optional[List[str]] = Field(
+        default_factory=list,
+        description="List of image URLs for this deal (LLM will usually return an empty list; the user uploads these later from the editor)"
+    )
+
+
+class SalesExperience(BaseExperience):
+    territory: Optional[str] = Field(
+        description="Territory, segment or patch owned in this role such as 'EMEA Mid-Market', 'North India — BFSI', 'Named Enterprise Accounts'"
+    )
+    quota_attainment: Optional[str] = Field(
+        description="Quota carried and how much of it was achieved such as '128% of $2.4M ARR quota (FY23)' or '110% average attainment across 3 years'"
+    )
+
+
+class SalesModel(BaseModel):
+    profile: Profile
+
+    skills: Optional[List[SkillGroup]] = Field(
+        description="Selling competencies grouped by category such as Prospecting & Lead Generation, Discovery & Qualification, Negotiation & Closing, Account Management, Pipeline & Forecasting, Territory Planning, Channel & Partner Sales, Sales Enablement, Customer Retention"
+    )
+
+    sales_methodologies: Optional[List[str]] = Field(
+        description="Selling frameworks the person sells with such as MEDDIC, MEDDPICC, SPIN Selling, Challenger, Sandler, BANT, Solution Selling, Value Selling, Miller Heiman, Consultative Selling, Account-Based Selling"
+    )
+
+    software_proficiency: Optional[List[str]] = Field(
+        description="CRM and sales tech used such as Salesforce, HubSpot, Zoho CRM, Microsoft Dynamics, Outreach, Salesloft, Apollo, ZoomInfo, LinkedIn Sales Navigator, Gong, Clari, PandaDoc, Advanced Excel"
+    )
+
+    experience: Optional[List[SalesExperience]]
+
+    deals: Optional[List[SalesDeal]] = Field(
+        description="Key deals, named accounts and client wins owned or closed"
+    )
+
+    achievements: Optional[List[AchievementItem]] = Field(
+        description="Sales recognition and records such as President's Club, Rep of the Year, top-percentile ranking, largest deal closed, fastest ramp to quota"
+    )
+
+    education: Optional[List[EducationItem]]
+
+    certifications: Optional[List[CertificationItem]] = Field(
+        description="Sales certifications such as Salesforce Certified Administrator, HubSpot Sales Software, Challenger Certified, MEDDIC Certified, Sandler Training, Certified Sales Professional (CSP)"
+    )
+
+    custom_sections: Optional[List[CustomSection]] = Field(
+        default_factory=list,
+        description=(
+            "Fallback for resume sections that have no home in the fields above. "
+            "Use as a LAST RESORT only, never duplicating content already placed "
+            "in another field. Exclude personal/identity details (date of birth, "
+            "marital status, ID numbers, address, salary), declarations and "
+            "references — those must be omitted entirely, not captured here. "
+            "Also holds custom sections the user adds later from the editor"
+        )
+    )
+
+
 # ---------------------------------------------------------------------------
 # Registry — maps category string → (model class, prompt instruction)
 # ---------------------------------------------------------------------------
@@ -1079,6 +1186,24 @@ _CATEGORY_REGISTRY: Dict[str, dict] = {
             "'certifications'. Keep people metrics — time-to-hire, attrition, "
             "headcount supported, offer acceptance, eNPS — in the programme "
             "outcomes or the role's key_points."
+        ),
+    },
+
+    'sales': {
+        'model': SalesModel,
+        'schema_json': SalesModel.model_json_schema(),
+        'instruction': (
+            "You are parsing a sales professional's resume (quota-carrying "
+            "selling, account management or business development — NOT marketing, "
+            "which owns campaigns and demand generation). Route named accounts, "
+            "closed deals and books of business into 'deals'; selling frameworks "
+            "(MEDDIC, SPIN, Challenger, Sandler, BANT) into 'sales_methodologies'; "
+            "CRM and sales-engagement tools into 'software_proficiency'; and "
+            "President's Club, Rep of the Year and ranking records into "
+            "'achievements'. Attach commercial numbers — quota attainment, revenue "
+            "closed, ARR, deal size, pipeline generated, win rate, net revenue "
+            "retention — to the role ('territory', 'quota_attainment', key_points) "
+            "or the deal outcomes. Never invent figures the resume does not state."
         ),
     },
 }

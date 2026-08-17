@@ -66,6 +66,7 @@ _MERGEABLE_SECTIONS = {
     'investment_portfolios': 'portfolio_type, assets_under_management, performance_return',
     'engagements': 'client_name, engagement_type, industry, start_date, end_date, description, responsibilities[], deliverables[], standards_applied[], tools_used[], engagement_value, measurable_outcomes[]',
     'hr_programs': 'program_name, program_type, organization, start_date, end_date, description, scope, activities[], tools_used[], measurable_outcomes[]',
+    'deals': 'client_name, deal_type, industry, start_date, end_date, description, products_sold[], deal_value, sales_cycle_length, stakeholders_engaged[], responsibilities[], measurable_outcomes[]',
     'skills': 'category, skills[]',
 }
 

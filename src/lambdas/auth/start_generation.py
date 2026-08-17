@@ -45,7 +45,7 @@ GUEST_EMAIL_DOMAIN = os.environ.get('GUEST_EMAIL_DOMAIN', 'guest.aifolio.interna
 # (see memory: adding a profession/template touches every backend allowlist).
 ALLOWED_CATEGORIES = {
     'software_engineer', 'designer', 'marketing', 'finance',
-    'civil_engineer', 'mechanical_engineer', 'accountant', 'hr',
+    'civil_engineer', 'mechanical_engineer', 'accountant', 'hr', 'sales',
 }
 # MUST stay in sync with the frontend TEMPLATE_META (templates/index.ts) and
 # upload/handler.py ALLOWED_TEMPLATES. This list previously lagged 28 templates
@@ -64,6 +64,7 @@ ALLOWED_TEMPLATES = {
     'ledger', 'sterling',
     'meridian', 'cambria', 'verdant',
     'haven', 'solace', 'quill', 'journal', 'atrium',
+    'clarion', 'cadence',
 }
 
 # Cap on the resume text embedded in the SQS message body. SQS has a hard

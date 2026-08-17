@@ -152,6 +152,7 @@ const DEFAULT_SECTION_ORDER = [
 	'projects',
 	'engagements',
 	'hr_programs',
+	'deals',
 	'skills',
 	'education',
 	'certifications',
@@ -163,6 +164,7 @@ const DEFAULT_SECTION_ORDER = [
 	'design_philosophy',
 	'software_proficiency',
 	'compliance_expertise',
+	'sales_methodologies',
 	'custom_sections',
 ];
 

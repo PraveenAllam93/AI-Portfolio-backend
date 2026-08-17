@@ -52,7 +52,7 @@ ALLOWED_ORIGIN = os.environ.get('ALLOWED_ORIGIN', '*')
 # Sections whose items carry an `images` field. MUST match every section the
 # edit page renders an `inputType: 'images'` control for — that control always
 # shows the "✦ Generate" button, so a section missing here 400s on click.
-_ALLOWED_SECTIONS = {'projects', 'experience', 'campaigns', 'engagements', 'hr_programs'}
+_ALLOWED_SECTIONS = {'projects', 'experience', 'campaigns', 'engagements', 'hr_programs', 'deals'}
 MAX_ITEM_IMAGES = 3
 
 _openai_api_key = None
@@ -143,6 +143,12 @@ _CATEGORY_STYLES = {
         "org-chart geometry, or workplace-collaboration imagery. "
         "Approachable and professional, never corporate-stock-photo cliché."
     ),
+    'sales': (
+        "a confident, commercial visual for a sales professional's portfolio. "
+        "Style: growth-and-pipeline aesthetic — abstract upward trajectory, "
+        "funnel or deal-stage geometry, or a clean handshake/partnership "
+        "composition. Assured and results-driven, never salesy clip-art."
+    ),
 }
 
 _DARK_TEMPLATES = {'neon', 'circuit', 'codex', 'nebula', 'glitch', 'ember', 'obsidian', 'voltage', 'nimbus', 'console', 'flux', 'monolith', 'helix', 'orbit'}
@@ -201,6 +207,18 @@ def _build_image_prompt(item: dict, section: str, category: str, template_id: st
             content_parts.append(f"Type: {item['program_type']}")
         if item.get('scope'):
             content_parts.append(f"Scope: {item['scope']}")
+        if item.get('description'):
+            content_parts.append(f"Description: {str(item['description'])[:300]}")
+    elif section == 'deals':
+        if item.get('client_name'):
+            content_parts.append(f"Account: {item['client_name']}")
+        if item.get('deal_type'):
+            content_parts.append(f"Deal type: {item['deal_type']}")
+        if item.get('industry'):
+            content_parts.append(f"Industry: {item['industry']}")
+        products = item.get('products_sold')
+        if isinstance(products, list) and products:
+            content_parts.append(f"Sold: {', '.join(str(p) for p in products[:6])}")
         if item.get('description'):
             content_parts.append(f"Description: {str(item['description'])[:300]}")
 

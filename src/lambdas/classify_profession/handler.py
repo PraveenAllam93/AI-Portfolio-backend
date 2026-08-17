@@ -37,6 +37,7 @@ ALLOWED_PROFESSIONS = {
     'mechanical_engineer',
     'accountant',
     'hr',
+    'sales',
 }
 
 # Short human-readable hints to help the model disambiguate.
@@ -45,15 +46,22 @@ ALLOWED_PROFESSIONS = {
 # (ledgers, close, audit, tax). 'accounting' and 'audit' were removed from the
 # finance hint when accountant was added — left in place they pulled every
 # CA/CPA resume into the finance schema, which has no engagements section.
+#
+# 'marketing' and 'sales' are the second-closest pair: marketing owns demand
+# creation (campaigns, channels, brand, content), sales owns the quota and the
+# named accounts (pipeline, deals, negotiation, renewals). 'growth' was dropped
+# from the marketing hint when sales was added — it read as revenue ownership
+# and pulled AE/BD resumes into the marketing schema, which has no deals section.
 _PROFESSION_HINTS = {
     'software_engineer': 'software development, programming, web/backend/mobile, DevOps, data/ML engineering',
     'designer': 'UI/UX, graphic/visual/product design, branding, illustration, motion',
-    'marketing': 'growth, content, SEO/SEM, brand, social media, campaigns, product marketing',
+    'marketing': 'demand generation, content, SEO/SEM, brand, social media, campaign management, product marketing, marketing analytics',
     'finance': 'investment banking, equity/credit research, valuation, FP&A, treasury, risk, private equity, financial consulting',
     'civil_engineer': 'structural/infrastructure/construction, site engineering, RC/steel design',
     'mechanical_engineer': 'mechanical design, thermal/HVAC, CAD/CAE, manufacturing, automotive/aerospace',
     'accountant': 'accounting, bookkeeping, statutory/internal audit, taxation (GST/VAT/income tax), month-end close, AP/AR, payroll accounting, CPA/CA/ACCA practice',
     'hr': 'human resources, talent acquisition/recruiting, employee relations, onboarding, L&D, compensation & benefits, HR operations, HRIS/people ops',
+    'sales': 'quota-carrying B2B selling, account executive/manager, business development, inside/field sales, SDR/BDR prospecting, pipeline and territory ownership, negotiation and closing, renewals and account expansion, channel/partner sales',
 }
 
 # Only the first chunk of the resume is needed to classify the field.

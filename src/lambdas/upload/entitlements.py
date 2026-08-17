@@ -113,6 +113,8 @@ FREE_TEMPLATES: frozenset = frozenset({
     'meridian',
     # hr
     'haven',
+    # sales
+    'clarion',
 })
 
 # ---------------------------------------------------------------------------

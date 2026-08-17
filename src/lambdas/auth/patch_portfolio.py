@@ -21,7 +21,7 @@ Allowlisted scalar fields (portfolioContent top-level):
 Allowlisted array sections (parsedData keys):
   experience, projects, skills, education, certifications, achievements,
   awards, campaigns, financial_modeling, investment_portfolios,
-  engagements (accountant), hr_programs (hr)
+  engagements (accountant), hr_programs (hr), deals (sales)
 
 Allowlisted string sections (parsedData keys):
   design_philosophy  — 2000 chars
@@ -29,6 +29,7 @@ Allowlisted string sections (parsedData keys):
 Allowlisted list sections (parsedData keys, list of strings):
   software_proficiency  — 50 items, 200 chars each
   compliance_expertise  — 50 items, 200 chars each
+  sales_methodologies   — 50 items, 200 chars each
 
 Security notes:
   - userId in path MUST match the Cognito token sub.
@@ -79,6 +80,7 @@ _VALID_TEMPLATE_IDS: frozenset = frozenset({
     'voltage', 'nimbus', 'citrus', 'console', 'neural', 'flux', 'monolith', 'helix', 'orbit', 'iris', 'terminal', 'beacon',
     'meridian', 'cambria', 'verdant',
     'haven', 'solace', 'quill', 'journal', 'atrium',
+    'clarion', 'cadence',
 })
 
 # Shape B: array sections in parsedData -> max item count
@@ -95,6 +97,7 @@ _ALLOWED_ARRAY_SECTIONS: dict[str, int] = {
     'investment_portfolios': 30,
     'engagements': 50,
     'hr_programs': 30,
+    'deals': 50,
     'custom_sections': 20,
 }
 
@@ -107,6 +110,7 @@ _ALLOWED_STRING_SECTIONS: dict[str, int] = {
 _ALLOWED_LIST_SECTIONS: dict[str, tuple] = {
     'software_proficiency': (50, 200),
     'compliance_expertise': (50, 200),
+    'sales_methodologies': (50, 200),
 }
 
 # Shape B: object sections in parsedData -> allowed top-level keys
