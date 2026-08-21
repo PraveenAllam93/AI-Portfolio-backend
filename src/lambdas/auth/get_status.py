@@ -5,6 +5,7 @@ API endpoint to check the processing status of a resume upload.
 
 import json
 import os
+import re
 import boto3
 from datetime import datetime, timezone, timedelta
 
@@ -73,6 +74,27 @@ FAILURE_STAGE = {
     'FAILED': 'PROCESSING',
     'INVALID_DOCUMENT': 'AI_PROCESSING',
 }
+
+# --- Client-facing failure text -------------------------------------------
+# `failureMessage` is the ONLY DynamoDB field allowed to reach the client. A
+# pipeline Lambda writing it is asserting the string is deliberately written
+# FOR the user (see ingestion/handler.py). Raw exception text belongs in
+# `reason` / `error`, which are logged internally and never returned.
+_MAX_FAILURE_MESSAGE_LEN = 300
+
+# Belt-and-braces: if a writer ever stuffs internals into failureMessage, drop
+# it and fall back to the generic per-status text. A careless writer then
+# degrades UX instead of disclosing infrastructure detail.
+_LEAKY_PATTERN = re.compile(
+    r'Traceback'
+    r'|File "'
+    r'|0x[0-9a-fA-F]{6,}'
+    r'|arn:aws:'
+    r'|amazonaws\.com'
+    r'|/var/task/'
+    r'|ai-portfolio-[a-z]+-'
+    r'|\b[A-Z][A-Za-z]*(?:Error|Exception)\b'  # ValueError, ClientError, ...
+)
 
 # Approximate progress percentage per status (for progress bars)
 STATUS_PROGRESS = {
@@ -201,7 +223,7 @@ def lambda_handler(event, context):
         # Add failure details if failed — never expose raw internal errors to the client
         if status in FAILURE_STATES:
             stage = FAILURE_STAGE.get(status, 'UNKNOWN')
-            result['failureReason'] = _safe_failure_message(status)
+            result['failureReason'] = _client_failure_message(item, status)
             result['failureStage'] = stage
             result['canRetry'] = True
             # Log the real reason internally for debugging
@@ -214,6 +236,33 @@ def lambda_handler(event, context):
     except Exception as e:
         _log_error("Unexpected error", correlationId=correlation_id, error=str(e))
         return _response(500, {'error': 'Internal server error'})
+
+
+def _client_failure_message(item: dict, status: str) -> str:
+    """Return the most specific user-safe failure text available.
+
+    Prefers the curated `failureMessage` a pipeline Lambda wrote, because it
+    tells the user what to actually DO ("your PDF is image-based, export a
+    text-based PDF") rather than the status-level generic. Falls back to
+    _safe_failure_message() when absent, empty, over-long, or tripping
+    _LEAKY_PATTERN.
+    """
+    raw = item.get('failureMessage')
+    if not isinstance(raw, str):
+        return _safe_failure_message(status)
+
+    msg = raw.strip()
+    if not msg or len(msg) > _MAX_FAILURE_MESSAGE_LEN:
+        return _safe_failure_message(status)
+
+    if _LEAKY_PATTERN.search(msg):
+        _log_error(
+            "failureMessage looked like leaked internals — using generic text",
+            status=status,
+        )
+        return _safe_failure_message(status)
+
+    return msg
 
 
 def _safe_failure_message(status: str) -> str:
