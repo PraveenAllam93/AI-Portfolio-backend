@@ -115,7 +115,7 @@ _ALLOWED_LIST_SECTIONS: dict[str, tuple] = {
 
 # Shape B: object sections in parsedData -> allowed top-level keys
 _ALLOWED_OBJECT_SECTIONS: dict[str, set] = {
-    'profile': {'full_name', 'headline', 'email', 'phone', 'location', 'summary', 'social_links', 'profile_image', 'summary_image', 'contact_tagline', 'core_expertise'},
+    'profile': {'full_name', 'headline', 'email', 'phone', 'location', 'summary', 'social_links', 'profile_image', 'summary_image', 'secondary_image', 'contact_tagline', 'core_expertise'},
 }
 
 # Max character length for any single string value within an array item
