@@ -110,6 +110,10 @@ def lambda_handler(event, context):
                 bucket, key,
                 f"Invalid extension: {ext}",
                 user_id, upload_id, correlation_id,
+                user_message=(
+                    "This file type isn't supported. "
+                    "Please upload your resume as a PDF or DOCX."
+                ),
             )
 
         # --- Validation 2: file size (from S3 event metadata) ---
@@ -119,6 +123,12 @@ def lambda_handler(event, context):
                 bucket, key,
                 f"File too large: {size} bytes (max {max_size_bytes})",
                 user_id, upload_id, correlation_id,
+                # Tell the user how big THEIR file is, never our threshold —
+                # the limit is a tuning knob, not something to publish.
+                user_message=(
+                    f"This file is {_format_size(size)}. "
+                    "Please upload a resume only."
+                ),
             )
 
         # --- Validation 3: magic number (read first 8 bytes) ---
@@ -135,6 +145,10 @@ def lambda_handler(event, context):
                 bucket, key,
                 "File content doesn't match declared extension",
                 user_id, upload_id, correlation_id,
+                user_message=(
+                    "We couldn't read this file as a PDF or DOCX. "
+                    "Please re-export your resume and try again."
+                ),
             )
 
         # --- Validation 4: DOCX zip bomb protection ---
@@ -150,6 +164,9 @@ def lambda_handler(event, context):
                     uploadId=upload_id,
                     reason=bomb_reason,
                 )
+                # Deliberately NO user_message: an attacker probing the zip
+                # bomb thresholds must not learn which check tripped. Falls
+                # back to the generic REJECTED text in get_status.
                 return _reject(
                     bucket, key,
                     "File rejected: zip bomb detected",
@@ -253,11 +270,28 @@ def _check_docx_zip_bomb(content: bytes) -> str | None:
     return None
 
 
+def _format_size(size_bytes: int) -> str:
+    """Human-readable size for user-facing text (e.g. '86 MB', '640 KB')."""
+    mb = size_bytes / (1024 * 1024)
+    if mb >= 1:
+        return f"{round(mb)} MB"
+    return f"{round(size_bytes / 1024)} KB"
+
+
 def _reject(
     bucket, key, reason,
     user_id=None, upload_id=None, correlation_id='',
+    user_message=None,
 ):
-    """Move file to rejected bucket and update status."""
+    """Move file to rejected bucket and update status.
+
+    `reason` is internal (CloudWatch only). `user_message`, when given, is a
+    curated string written to `failureMessage` — the ONLY DynamoDB field
+    get_status surfaces to the client. Omit it for checks whose existence
+    should stay private (zip bomb); the client then gets the generic text.
+    Never interpolate exception text into it: get_status's leak guard drops
+    anything that looks like internals.
+    """
     _log_warning(
         "File rejected",
         correlationId=correlation_id,
@@ -282,11 +316,13 @@ def _reject(
         s3_client.delete_object(Bucket=bucket, Key=key)
 
         if user_id and upload_id:
-            # Store a generic rejection reason visible to the user;
-            # the detailed reason is in CloudWatch logs only.
-            _update_status(user_id, upload_id, 'REJECTED', {
-                'reason': 'File did not pass security validation.',
-            })
+            # `reason` stays generic — it is internal-only, and the detailed
+            # reason is in CloudWatch logs. `failureMessage` is what actually
+            # reaches the user, so only set it when we have curated text.
+            status_data = {'reason': 'File did not pass security validation.'}
+            if user_message:
+                status_data['failureMessage'] = user_message
+            _update_status(user_id, upload_id, 'REJECTED', status_data)
 
     except Exception as e:
         _log_error(
